@@ -1,4 +1,22 @@
-.venv/
-__pycache__/
-*.pyc
+# Secrets 
 .env
+.env.*
+!.env.example
+
+# AWS EC2 key pairs and certificates
+*.pem
+
+# macOS 
+.DS_Store
+Thumbs.db
+
+# IntelliJ IDEA 
+.idea/
+*.iml
+
+# VS Code
+**/.vscode/*
+!**/.vscode/extensions.json
+
+# Logs 
+*.log
