@@ -11,6 +11,8 @@ class Step(str, Enum):
     NONE = "NONE"
     DISEASE = "DISEASE"
     DRUG = "DRUG"
+    HEALTH_FOOD_CONFUSION = "HEALTH_FOOD_CONFUSION"  # mode C, 일반식품일 때만
+    UNAPPROVED_FUNCTION = "UNAPPROVED_FUNCTION"  # mode C, 건강기능식품일 때만
     EXAGGERATION = "EXAGGERATION"
     DECEPTION = "DECEPTION"
     COMPARISON = "COMPARISON"
@@ -24,6 +26,7 @@ class LlmVerdict(BaseModel):
     problem_text: str
     revision: str
     evidence_ids: list[str] = []
+    matched_function: str = ""  # mode C: 문장의 기능성과 뜻이 같은 '인정받은 기능성' 항목
 
 
 class LlmOutput(BaseModel):
