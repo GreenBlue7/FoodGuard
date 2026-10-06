@@ -5,3 +5,4 @@ python-dotenv
 sentence-transformers
 psycopg[binary]
 pgvector
+pytest
