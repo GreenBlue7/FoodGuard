@@ -49,6 +49,7 @@ class Span(ApiModel):
 class Evidence(ApiModel):
     id: str
     title: str
+    url: str | None = None
 
 class JudgeResult(ApiModel):
     sentence_ids: list[str]

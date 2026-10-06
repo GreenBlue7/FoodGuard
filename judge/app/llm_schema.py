@@ -23,6 +23,7 @@ class LlmVerdict(BaseModel):
     reason: str
     problem_text: str
     revision: str
+    evidence_ids: list[str] = []
 
 
 class LlmOutput(BaseModel):

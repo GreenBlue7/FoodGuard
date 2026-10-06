@@ -16,7 +16,9 @@ def _risky_words(text: str) -> list[str]:
     return [t.text for t in tag_sentence(sentence) if t.type in _RISKY_TAGS]
 
 
-def verify(sentence: Sentence, tags: list[Tag], verdict: LlmVerdict) -> tuple[LlmVerdict, list[str]]:
+def verify(
+    sentence: Sentence, tags: list[Tag], verdict: LlmVerdict, allowed_evidence_ids: set[str]
+) -> tuple[LlmVerdict, list[str]]:
     notes: list[str] = []
     status = verdict.status
     reason = verdict.reason.strip()
@@ -57,6 +59,14 @@ def verify(sentence: Sentence, tags: list[Tag], verdict: LlmVerdict) -> tuple[Ll
             revision = ""
             notes.append(f"수정안에 주의 단어({', '.join(words)})가 있어 버림")
 
+    # 근거로 든 사례는 이 문장에 실제로 보여 준 사례여야 한다 (지어낸 번호 차단)
+    evidence_ids = [i for i in dict.fromkeys(verdict.evidence_ids) if i in allowed_evidence_ids]
+    if len(evidence_ids) != len(verdict.evidence_ids):
+        notes.append("보여 주지 않은 사례 번호를 근거로 들어 버림")
+    if status is Status.OK and evidence_ids:
+        evidence_ids = []  # 적발 사례를 '문제없음'의 근거로 붙이지 않는다
+        notes.append("OK 판정이라 근거 사례를 뺌")
+
     if not reason:
         if status is Status.OK:
             reason = "해당하는 위반 유형이 없습니다."
@@ -65,6 +75,12 @@ def verify(sentence: Sentence, tags: list[Tag], verdict: LlmVerdict) -> tuple[Ll
         notes.append("이유 없음")
 
     fixed = verdict.model_copy(
-        update={"status": status, "reason": reason, "problem_text": problem_text, "revision": revision}
+        update={
+            "status": status,
+            "reason": reason,
+            "problem_text": problem_text,
+            "revision": revision,
+            "evidence_ids": evidence_ids,
+        }
     )
     return fixed, notes
