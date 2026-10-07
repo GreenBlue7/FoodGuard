@@ -1,0 +1,53 @@
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  push:
+    branches: [develop, main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-ci.yml"
+  workflow_dispatch: # Actions 탭에서 버튼으로 직접 실행할 수 있게 해줌
+
+# Read-only token: 이 workflow는 repo에 아무것도 안씀 
+permissions:
+  contents: read
+
+# 브랜치/PR당 실행은 하나만 유지, 이전 실행 취소는 PR에서만
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Lint / Type-check / Build
+    runs-on: ubuntu-latest
+    # 기본 제한은 360분이라, 멈춘 실행이 무료 사용 시간을 다 쓰지 않도록 줄임
+    timeout-minutes: 10
+    defaults:
+      run:
+        # run 스텝은 모두 frontend/ 에서 실행
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v7 # 다른 사람이 만들어 GitHub에 공개한 재사용 가능한 Action을 불러오는 문법
+
+      - uses: actions/setup-node@v7
+        with:
+          # 로컬, CI, Docker가 같은 Node 버전 파일을 기준으로 맞춤
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # lock 파일과 정확히 같은 버전으로 설치 (lock과 package.json이 어긋나면 실패)
+      - run: npm ci             # package.json과 package-lock.json이 일치하고 설치가 가능한지 검사함
+
+      - run: npm run check:lint # oxlint + ESLint 코드 품질 규칙을 검사
+
+      - run: npm run type-check # vue-tsc로 .ts, .vue 파일의 TypeScript 타입 검사
+
+      - run: npm run build-only # Vite 운영용 빌드가 끝까지 되는지 검사
