@@ -1,0 +1,51 @@
+# Spring backend setup
+
+This module uses PostgreSQL. For a new empty `foodguard` database, apply
+`db/001_core.sql` before starting Spring. For the existing Docker
+`capstone_db` on port 5435, keep its product and inspection data and apply only
+`db/upgrade_existing_capstone.sql`. Do not apply `001_core.sql` to the existing
+database. The upgrade script also adds the inspection-to-product foreign key
+and inspection-date index; existing inspection report numbers must refer to
+products. The application validates tables on startup and does not alter them.
+
+The existing Docker database was imported before `approvedFunctions` was
+stored. After creating `product_approved_functions`, the one-time backfill can
+populate it from `products.primary_fnclty`. Set `DB_URL`, `DB_USERNAME`, and
+`DB_PASSWORD` in the shell first, then run these commands from `backend`:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --foodsafety.approved-functions-backfill-enabled=true --foodsafety.approved-functions-backfill-mode=preview"
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --foodsafety.approved-functions-backfill-enabled=true --foodsafety.approved-functions-backfill-mode=apply"
+```
+
+Preview only reports counts. Apply inserts functions for products that have no
+saved functions, in 500-product transactions; it does not change existing
+product or inspection rows. The parser is heuristic, so review representative
+products before treating parsed phrases as verified claims. The backfill is
+disabled during normal application startup.
+
+The default JDBC URL is `jdbc:postgresql://localhost:5432/foodguard`. To use
+the existing Docker database, set
+`DB_URL=jdbc:postgresql://localhost:5435/capstone_db`, `DB_USERNAME=postgres`,
+and `DB_PASSWORD` to the password configured for that container. The Python
+judge uses a separate `DATABASE_URL` value with the same PostgreSQL database;
+its `cases` table and pgvector extension are currently defined in
+`judge/sql/cases.sql` and are not created by this backend script.
+
+`FOOD_SAFETY_API_KEY` is needed only when running the I0030 import. The import
+controller is disabled unless `FOOD_SAFETY_IMPORT_ENABLED=true`; enable it
+only in a controlled environment because it has no user authentication.
+`FOOD_SAFETY_TIMEOUT_MS` sets the API connection/read timeout (default 30000).
+Set `JUDGE_URL` to the full judge endpoint (default `http://localhost:8000/judge`)
+and `JUDGE_TIMEOUT_MS` to the HTTP connection/read timeout (default 30000).
+The judge requires its own configuration and database tables.
+
+With a JDK available through `JAVA_HOME`, run `./gradlew bootRun` (Windows:
+`gradlew.bat bootRun`) from this directory. Product import is an explicit
+`POST /api/data/load-all` operation; it is not started by the application.
+An import error returns HTTP 502 and reports how many records were saved before
+the failure. Concurrent imports within one backend process return HTTP 409.
+This operation is not atomic across all API pages; coordination across multiple
+backend processes has not been implemented.
+
+The public Vue API contract remains open in `../api/api_specs.md`.

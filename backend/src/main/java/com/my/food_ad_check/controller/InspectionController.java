@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -89,16 +90,23 @@ public class InspectionController {
         response.put("step1", step1);
 
         if (productTypeConfirmed) {
-            List<String> keywords = productApiService.parsePrimaryFnclty(primaryFunctionality);
-            FastApiRequest aiRequest = FastApiRequest.builder()
-                    .prdlstNm(productName)
-                    .productType(productType)
-                    .primaryFncltyKeywords(keywords)
-                    .adText(adText)
-                    .build();
+            List<String> keywords = List.of();
+            if (HEALTH_FUNCTIONAL_FOOD.equals(productType)) {
+                keywords = product == null ? List.of() : product.getApprovedFunctions();
+                if (keywords.isEmpty()) {
+                    keywords = productApiService.parsePrimaryFnclty(primaryFunctionality);
+                }
+            }
+            String judgeProductType = HEALTH_FUNCTIONAL_FOOD.equals(productType)
+                    ? "HEALTH_FUNCTIONAL" : "GENERAL_FOOD";
+            String judgeRequestId = UUID.randomUUID().toString();
+            response.put("judgeRequestId", judgeRequestId);
+            FastApiRequest aiRequest = new FastApiRequest(judgeRequestId, "C",
+                    new FastApiRequest.Product(judgeProductType,
+                            productName == null ? List.of() : List.of(productName), keywords), adText);
             FastApiResponse aiResponse = aiJudgmentService.requestJudgment(aiRequest);
             response.put("step2", aiResponse == null ? judgmentFailure() : aiResponse);
-            if (aiResponse == null || "ERROR".equalsIgnoreCase(aiResponse.getStatus())) {
+            if (aiResponse == null) {
                 response.put("status", "PARTIAL");
             }
         } else {

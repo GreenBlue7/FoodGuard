@@ -3,6 +3,7 @@ package com.my.food_ad_check.controller;
 import com.my.food_ad_check.dto.ProductSummary;
 import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.ProductRepository;
+import com.my.food_ad_check.service.ProductApiService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,9 +17,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProductController {
 
     private final ProductRepository productRepository;
+    private final ProductApiService productApiService;
 
-    public ProductController(ProductRepository productRepository) {
+    public ProductController(ProductRepository productRepository, ProductApiService productApiService) {
         this.productRepository = productRepository;
+        this.productApiService = productApiService;
     }
 
     @GetMapping
@@ -33,12 +36,17 @@ public class ProductController {
                 .orElseGet(() -> productRepository
                         .findTop20ByPrdlstNmContainingIgnoreCaseOrderByPrdlstNmAsc(normalizedKeyword))
                 .stream()
-                .map(ProductController::toSummary)
+                .map(this::toSummary)
                 .toList();
     }
 
-    private static ProductSummary toSummary(Product product) {
+    private ProductSummary toSummary(Product product) {
+        List<String> approvedFunctions = product.getApprovedFunctions();
+        if (approvedFunctions.isEmpty() && "건강기능식품".equals(product.getProductType())) {
+            approvedFunctions = productApiService.parsePrimaryFnclty(product.getPrimaryFnclty());
+        }
         return new ProductSummary(product.getPrdlstReportNo(), product.getPrdlstNm(),
-                product.getBsshNm(), product.getProductType(), product.getPrimaryFnclty());
+                product.getBsshNm(), product.getProductType(), product.getPrimaryFnclty(),
+                approvedFunctions);
     }
 }

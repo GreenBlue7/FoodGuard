@@ -38,7 +38,7 @@ class InspectionFlowControllerTests {
 
     @BeforeEach
     void setUp() {
-        productController = new ProductController(productRepository);
+        productController = new ProductController(productRepository, productApiService);
         inspectionController = new InspectionController(productRepository, inspectionRecordRepository,
                 productApiService, aiJudgmentService, ruleCheckService);
     }

@@ -1,6 +1,8 @@
 package com.my.food_ad_check.entity;
 
 import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -14,7 +16,7 @@ public class Product {
     @Column(name = "prdlst_report_no")
     private String prdlstReportNo; // 품목제조신고번호 (기본키)
 
-    @Column(name = "prdlst_nm")
+    @Column(name = "prdlst_nm", nullable = false)
     private String prdlstNm; // 제품명
 
     @Column(name = "bssh_nm")
@@ -23,6 +25,13 @@ public class Product {
     @Column(name = "primary_fnclty", columnDefinition = "TEXT")
     private String primaryFnclty; // 주된기능성 (자유 텍스트 형태이므로 길게 설정)[cite: 8, 10]
 
-    @Column(name = "product_type")
+    @Column(name = "product_type", nullable = false)
     private String productType; // 제품 종류 (예: 건강기능식품)
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "product_approved_functions",
+            joinColumns = @JoinColumn(name = "prdlst_report_no"))
+    @OrderColumn(name = "position")
+    @Column(name = "function_text", nullable = false, columnDefinition = "TEXT")
+    private List<String> approvedFunctions = new ArrayList<>();
 }

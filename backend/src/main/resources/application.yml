@@ -1,15 +1,15 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5435/capstone_db}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/foodguard}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:}
     driver-class-name: org.postgresql.Driver
 
   jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect # DB가 안 켜져 있어도 Dialect 에러가 안 나게 강제 고정
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      ddl-auto: update
-    show-sql: true
+      ddl-auto: validate
+    show-sql: false
 
 server:
   port: 8080
@@ -17,3 +17,9 @@ server:
 foodsafety:
   api-key: ${FOOD_SAFETY_API_KEY:}
   api-base-url: ${FOOD_SAFETY_API_BASE_URL:http://openapi.foodsafetykorea.go.kr/api}
+  timeout-ms: ${FOOD_SAFETY_TIMEOUT_MS:30000}
+  import-enabled: ${FOOD_SAFETY_IMPORT_ENABLED:false}
+
+judge:
+  url: ${JUDGE_URL:http://localhost:8000/judge}
+  timeout-ms: ${JUDGE_TIMEOUT_MS:30000}
