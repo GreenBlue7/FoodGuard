@@ -78,9 +78,9 @@ the Vue `InspectionJob` contract.
   `localhost:5432/foodguard`. The team must choose whether the judge shares
   `capstone_db` or uses a separate database and set its actual environment
   accordingly. Do not infer that it uses the Spring database from the example.
-- The `capstone_db` database currently has neither the `vector` extension nor
-  the judge's `cases` table. The judge supplies `judge/sql/cases.sql`; its owner
-  needs to confirm when that schema and case data should be loaded.
+- The `vector` extension is enabled in `capstone_db`, but the judge's `cases`
+  table and case data are not loaded. The judge supplies `judge/sql/cases.sql`;
+  its owner needs to confirm when that schema and case data should be loaded.
 - Spring calls `http://localhost:8000/judge` by default. With no judge service
   listening, `POST /api/checks/full-process` saves the layer-1 result with
   overall status `PARTIAL` and an error in `step2`.

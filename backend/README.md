@@ -28,9 +28,11 @@ The default JDBC URL is `jdbc:postgresql://localhost:5432/foodguard`. To use
 the existing Docker database, set
 `DB_URL=jdbc:postgresql://localhost:5435/capstone_db`, `DB_USERNAME=postgres`,
 and `DB_PASSWORD` to the password configured for that container. The Python
-judge uses a separate `DATABASE_URL` value with the same PostgreSQL database;
-its `cases` table and pgvector extension are currently defined in
-`judge/sql/cases.sql` and are not created by this backend script.
+judge has a separate `DATABASE_URL`; set it to the chosen shared database when
+the judge is integrated. The judge's `.env.example` currently points elsewhere.
+`db/002_pgvector.sql` enables the pgvector extension in that database. The
+judge's `cases` table is defined in `judge/sql/cases.sql` and is not created
+by the backend scripts.
 
 `FOOD_SAFETY_API_KEY` is needed only when running the I0030 import. The import
 controller is disabled unless `FOOD_SAFETY_IMPORT_ENABLED=true`; enable it
