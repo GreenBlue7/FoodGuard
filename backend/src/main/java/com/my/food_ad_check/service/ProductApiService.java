@@ -26,13 +26,18 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class ProductApiService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductApiService.class);
-    private static final Pattern NUMBERED_CLAUSE = Pattern.compile("(?=[①-⑳])|(?=\\(?\\d{1,2}[.)]\\s)");
-    private static final Pattern CLAIM_SEPARATOR = Pattern.compile("\\s*[·ㆍ・，;；/\\n]+\\s*");
+    private static final Pattern NUMBERED_CLAUSE = Pattern.compile(
+            "(?=[①-⑳])|(?=\\(\\d{1,2}[.)]\\s)|(?<!\\()(?=\\d{1,2}[.)]\\s)");
+    private static final Pattern NUMBERED_PREFIX = Pattern.compile(
+            "^(?:[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)])");
+    private static final Pattern CLAIM_SEPARATOR = Pattern.compile("\\s*[，;；]+\\s*");
+    private static final Pattern INTERPUNCT_SEPARATOR = Pattern.compile("\\s*[·ㆍ・･]+\\s*");
     private static final Pattern COMMA_CLAIM_BOUNDARY = Pattern.compile(
             "(?<=필요)\\s*,\\s*|(?<=있음)\\s*,\\s*|(?<=줌)\\s*,\\s*|(?<=관여)\\s*,\\s*");
     private static final Pattern APPROVED_CLAIM_SUFFIX = Pattern.compile(
             "\\s*(?:에\\s*)?도움을\\s*줄\\s*수\\s*있(?:음|습니다)\\s*[.!。]?\\s*$");
-    private static final Pattern LEADING_NUMBER = Pattern.compile("^(?:[①-⑳]|\\(?\\d{1,2}[.)])\\s*");
+    private static final Pattern LEADING_NUMBER = Pattern.compile(
+            "^(?:[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)])\\s*");
 
     private final ProductRepository productRepository;
     private final RestTemplate restTemplate;
@@ -193,20 +198,34 @@ public class ProductApiService {
                 continue;
             }
 
-            boolean labeledLine = cleanedLine.matches("^[-•*].*");
             cleanedLine = cleanedLine.replaceFirst("^[-•*]\\s*", "");
             cleanedLine = cleanedLine.replaceFirst("^\\[[^]]+\\]\\s*", "");
-            if (labeledLine) {
-                cleanedLine = cleanedLine.replaceFirst("^[^:：]{1,40}[:：]\\s*", "");
-            }
+            cleanedLine = cleanedLine.replaceFirst("^[^:：]{1,40}[:：]\\s*", "");
 
-            for (String numberedClause : NUMBERED_CLAUSE.split(cleanedLine)) {
+            String[] numberedClauses = NUMBERED_CLAUSE.split(cleanedLine);
+            for (int clauseIndex = 0; clauseIndex < numberedClauses.length; clauseIndex++) {
+                String numberedClause = numberedClauses[clauseIndex];
+                if (clauseIndex == 0 && numberedClauses.length > 1
+                        && !NUMBERED_PREFIX.matcher(cleanedLine).find()
+                        && !hasClaimEnding(numberedClause)) {
+                    continue;
+                }
                 String clause = LEADING_NUMBER.matcher(numberedClause).replaceFirst("");
                 for (String fragment : CLAIM_SEPARATOR.split(clause)) {
                     for (String commaSeparated : COMMA_CLAIM_BOUNDARY.split(fragment)) {
-                        String claim = normalizeClaim(commaSeparated);
-                        if (!claim.isEmpty()) {
-                            claims.putIfAbsent(claim.toLowerCase(Locale.ROOT), claim);
+                        String[] interpunctParts = INTERPUNCT_SEPARATOR.split(commaSeparated);
+                        boolean separateParts = interpunctParts.length > 1;
+                        for (String part : interpunctParts) {
+                            if (part.trim().length() < 3) {
+                                separateParts = false;
+                                break;
+                            }
+                        }
+                        for (String part : separateParts ? interpunctParts : new String[] {commaSeparated}) {
+                            String claim = normalizeClaim(part);
+                            if (!claim.isEmpty()) {
+                                claims.putIfAbsent(claim.toLowerCase(Locale.ROOT), claim);
+                            }
                         }
                     }
                 }
@@ -220,6 +239,15 @@ public class ProductApiService {
                 .replaceAll("^[\\s:：,，;；]+|[\\s:：,，;；.!。]+$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return claim;
+        if (claim.matches("^\\([^)]{1,10}\\)$") && !hasClaimEnding(fragment)) {
+            return "";
+        }
+        return claim.length() >= 3 || (claim.length() >= 2 && hasClaimEnding(fragment))
+                ? claim : "";
+    }
+
+    private static boolean hasClaimEnding(String text) {
+        return text.contains("필요") || text.contains("도움") || text.contains("관여")
+                || text.contains("개선") || text.contains("유지");
     }
 }

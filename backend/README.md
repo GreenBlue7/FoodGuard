@@ -23,6 +23,11 @@ saved functions, in 500-product transactions; it does not change existing
 product or inspection rows. The parser is heuristic, so review representative
 products before treating parsed phrases as verified claims. The backfill is
 disabled during normal application startup.
+For a read-only review of all source products after the table has been filled,
+use `--foodsafety.approved-functions-backfill-mode=refresh-preview`. The
+backfill has no mode that overwrites saved functions; parser revisions require
+a separately reviewed data migration. Some ingredient headings in free-text
+source data still need manual review.
 
 The default JDBC URL is `jdbc:postgresql://localhost:5432/foodguard`. To use
 the existing Docker database, set

@@ -26,12 +26,15 @@ public class ApprovedFunctionsBackfill implements ApplicationRunner {
             WHERE p.prdlst_report_no > ?
               AND p.primary_fnclty IS NOT NULL
               AND btrim(p.primary_fnclty) <> ''
-              AND NOT EXISTS (
-                  SELECT 1 FROM product_approved_functions f
-                  WHERE f.prdlst_report_no = p.prdlst_report_no
-              )
+              %s
             ORDER BY p.prdlst_report_no
             LIMIT ?
+            """;
+    private static final String MISSING_FUNCTIONS = """
+            AND NOT EXISTS (
+                SELECT 1 FROM product_approved_functions f
+                WHERE f.prdlst_report_no = p.prdlst_report_no
+            )
             """;
     private static final String INSERT_FUNCTION = """
             INSERT INTO product_approved_functions (prdlst_report_no, position, function_text)
@@ -42,18 +45,22 @@ public class ApprovedFunctionsBackfill implements ApplicationRunner {
     private final JdbcTemplate jdbcTemplate;
     private final ProductApiService productApiService;
     private final TransactionTemplate transactionTemplate;
+    private final String mode;
     private final boolean apply;
+    private final boolean refresh;
 
     public ApprovedFunctionsBackfill(JdbcTemplate jdbcTemplate, ProductApiService productApiService,
                                      PlatformTransactionManager transactionManager,
                                      @Value("${foodsafety.approved-functions-backfill-mode:preview}") String mode) {
-        if (!"preview".equals(mode) && !"apply".equals(mode)) {
-            throw new IllegalArgumentException("Backfill mode must be preview or apply");
+        if (!List.of("preview", "apply", "refresh-preview").contains(mode)) {
+            throw new IllegalArgumentException("Invalid approved-functions backfill mode");
         }
         this.jdbcTemplate = jdbcTemplate;
         this.productApiService = productApiService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.mode = mode;
         this.apply = "apply".equals(mode);
+        this.refresh = mode.startsWith("refresh-");
     }
 
     @Override
@@ -65,9 +72,10 @@ public class ApprovedFunctionsBackfill implements ApplicationRunner {
         long overThirtyFunctions = 0;
         int maxFunctionsPerProduct = 0;
         List<String> outlierReportNos = new ArrayList<>();
+        String selectSql = SELECT_PRODUCTS.formatted(refresh ? "" : MISSING_FUNCTIONS);
 
         while (true) {
-            List<ProductSource> batch = jdbcTemplate.query(SELECT_PRODUCTS,
+            List<ProductSource> batch = jdbcTemplate.query(selectSql,
                     (rs, rowNum) -> new ProductSource(rs.getString(1), rs.getString(2)),
                     lastReportNo, BATCH_SIZE);
             if (batch.isEmpty()) {
@@ -112,7 +120,7 @@ public class ApprovedFunctionsBackfill implements ApplicationRunner {
     }
 
     private String mode() {
-        return apply ? "apply" : "preview";
+        return mode;
     }
 
     private record ProductSource(String reportNo, String primaryFnclty) {

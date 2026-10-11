@@ -73,7 +73,9 @@ the Vue `InspectionJob` contract.
 - The existing Spring product database is Docker `capstone_db` on host port
   `5435`. Product lookup and inspection persistence have been observed against
   this database. The historical products now have parsed approved functions
-  stored in `product_approved_functions`.
+  stored in `product_approved_functions`. This extraction is heuristic: some
+  ingredient headings in the source text can appear as list items, so the team
+  must review the data before treating the list as legally verified claims.
 - The judge's `.env.example` still points `DATABASE_URL` at
   `localhost:5432/foodguard`. The team must choose whether the judge shares
   `capstone_db` or uses a separate database and set its actual environment
