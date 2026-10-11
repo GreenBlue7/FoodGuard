@@ -5,10 +5,10 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import tailwindcss from '@tailwindcss/vite'
 
-// https://vite.dev/config/
+// 설정 문서: https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // 개발 서버가 /api 요청을 넘길 백엔드 주소
-  // 기본값은 로컬 Spring Boot(8080)
+  // 쉘 환경 변수나 .env.development.local의 VITE_API_PROXY_TARGET으로 바꿀 수 있음
   const env = loadEnv(mode, process.cwd())
   const apiTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:8080'
 

@@ -34,14 +34,15 @@ export type ProductInfoSource = 'MFDS' | 'USER_DECLARED' | 'UNVERIFIED'
 export interface InspectionJob {
   jobId: string
   status: JobStatus
-  createdAt: string // ISO 8601
+  createdAt: string // ISO 8601 형식
   request: InspectionRequest // 검사에 쓴 요청. 결과 화면의 원문 표시와 재시도에 사용
   productInfoSource: ProductInfoSource
   layer1: Layer1Result | null // RUNNING 중에도 올 수 있음
   layer2: Layer2Result | null // DONE일 때만
 }
 
-// 원문 안의 위치. 단위는 유니코드 코드 포인트, end는 미포함(exclusive)
+// 원문 안의 위치
+// 단위는 유니코드 코드 포인트, end는 미포함(exclusive)
 export interface TextRange {
   start: number
   end: number
@@ -57,7 +58,6 @@ export interface Layer1Item {
 export interface Layer1Result {
   appliedProductType: ProductType // 어떤 규칙 세트를 적용했는지
   // 빈 배열이면 확인할 필수 문구가 없는 제품 종류
-  // (화면: "모두 포함" 대신 "이 제품 종류에는 확인할 필수 문구가 없습니다")
   items: Layer1Item[]
   allPassed: boolean
 }
@@ -66,7 +66,7 @@ export interface Sentence {
   index: number
   text: string
   range: TextRange
-  isMandatory: boolean // 의무 문구라서 판정 대상에서 제외됨
+  isMandatory: boolean // 의무 문구라서 판정 대상에서 제외
 }
 
 export type Verdict = 'VIOLATION' | 'REVIEW' | 'OK'
@@ -100,5 +100,5 @@ export interface Layer2Result {
   findings: Finding[]
   model: string // 예: "gemini-2.5-pro"
   dataAsOf: string // 판단 기준일 YYYY-MM-DD
-  judgedAt: string // ISO 8601
+  judgedAt: string // ISO 8601 형식
 }
