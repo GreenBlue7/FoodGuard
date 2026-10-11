@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 
+
 /* 디자인 토큰. 차콜(주색) + 노랑(포인트) + 회색→노랑 그라데이션 배경 */
 @theme {
   --color-ink-900: #1c1c1c;
