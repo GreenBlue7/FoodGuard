@@ -5,17 +5,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.ProductRepository;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -23,23 +26,32 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class ProductApiService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductApiService.class);
-    private static final Pattern NUMBERED_CLAUSE = Pattern.compile("(?=[①-⑳])|(?=\\(?\\d{1,2}[.)]\\s)");
-    private static final Pattern CLAIM_SEPARATOR = Pattern.compile("\\s*[·ㆍ・,，;；/\\n]+\\s*");
+    private static final Pattern NUMBERED_CLAUSE = Pattern.compile(
+            "(?=[①-⑳])|(?=\\(\\d{1,2}[.)]\\s)|(?<!\\()(?=\\d{1,2}[.)]\\s)");
+    private static final Pattern NUMBERED_PREFIX = Pattern.compile(
+            "^(?:[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)])");
+    private static final Pattern CLAIM_SEPARATOR = Pattern.compile("\\s*[，;；]+\\s*");
+    private static final Pattern INTERPUNCT_SEPARATOR = Pattern.compile("\\s*[·ㆍ・･]+\\s*");
+    private static final Pattern COMMA_CLAIM_BOUNDARY = Pattern.compile(
+            "(?<=필요)\\s*,\\s*|(?<=있음)\\s*,\\s*|(?<=줌)\\s*,\\s*|(?<=관여)\\s*,\\s*");
     private static final Pattern APPROVED_CLAIM_SUFFIX = Pattern.compile(
             "\\s*(?:에\\s*)?도움을\\s*줄\\s*수\\s*있(?:음|습니다)\\s*[.!。]?\\s*$");
-    private static final Pattern LEADING_NUMBER = Pattern.compile("^(?:[①-⑳]|\\(?\\d{1,2}[.)])\\s*");
+    private static final Pattern LEADING_NUMBER = Pattern.compile(
+            "^(?:[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)])\\s*");
 
     private final ProductRepository productRepository;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final String apiKey;
     private final String apiBaseUrl;
+    private final AtomicBoolean importRunning = new AtomicBoolean();
 
     @Autowired
     public ProductApiService(ProductRepository productRepository,
                              @Value("${foodsafety.api-key:}") String apiKey,
-                             @Value("${foodsafety.api-base-url:http://openapi.foodsafetykorea.go.kr/api}") String apiBaseUrl) {
-        this(productRepository, new RestTemplate(), apiKey, apiBaseUrl);
+                             @Value("${foodsafety.api-base-url:http://openapi.foodsafetykorea.go.kr/api}") String apiBaseUrl,
+                             @Value("${foodsafety.timeout-ms:30000}") int timeoutMs) {
+        this(productRepository, timedRestTemplate(timeoutMs), apiKey, apiBaseUrl);
     }
 
     ProductApiService(ProductRepository productRepository, RestTemplate restTemplate,
@@ -50,7 +62,25 @@ public class ProductApiService {
         this.apiBaseUrl = apiBaseUrl.replaceAll("/+$", "");
     }
 
+    private static RestTemplate timedRestTemplate(int timeoutMs) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofMillis(timeoutMs));
+        factory.setReadTimeout(Duration.ofMillis(timeoutMs));
+        return new RestTemplate(factory);
+    }
+
     public String loadAllProductData() {
+        if (!importRunning.compareAndSet(false, true)) {
+            return "데이터 적재 진행 중: 이전 요청이 끝난 뒤 다시 시도해 주세요.";
+        }
+        try {
+            return doLoadAllProductData();
+        } finally {
+            importRunning.set(false);
+        }
+    }
+
+    private String doLoadAllProductData() {
         if (apiKey == null || apiKey.isBlank()) {
             return "데이터 적재 실패: FOOD_SAFETY_API_KEY 설정이 필요합니다.";
         }
@@ -122,6 +152,7 @@ public class ProductApiService {
                     product.setBsshNm(row.path("BSSH_NM").asText());
                     product.setPrimaryFnclty(row.path("PRIMARY_FNCLTY").asText());
                     product.setProductType("건강기능식품");
+                    product.setApprovedFunctions(parsePrimaryFnclty(product.getPrimaryFnclty()));
 
                     productList.add(product);
                 }
@@ -167,19 +198,35 @@ public class ProductApiService {
                 continue;
             }
 
-            boolean labeledLine = cleanedLine.matches("^[-•*].*");
             cleanedLine = cleanedLine.replaceFirst("^[-•*]\\s*", "");
             cleanedLine = cleanedLine.replaceFirst("^\\[[^]]+\\]\\s*", "");
-            if (labeledLine) {
-                cleanedLine = cleanedLine.replaceFirst("^[^:：]{1,40}[:：]\\s*", "");
-            }
+            cleanedLine = cleanedLine.replaceFirst("^[^:：]{1,40}[:：]\\s*", "");
 
-            for (String numberedClause : NUMBERED_CLAUSE.split(cleanedLine)) {
+            String[] numberedClauses = NUMBERED_CLAUSE.split(cleanedLine);
+            for (int clauseIndex = 0; clauseIndex < numberedClauses.length; clauseIndex++) {
+                String numberedClause = numberedClauses[clauseIndex];
+                if (clauseIndex == 0 && numberedClauses.length > 1
+                        && !NUMBERED_PREFIX.matcher(cleanedLine).find()
+                        && !hasClaimEnding(numberedClause)) {
+                    continue;
+                }
                 String clause = LEADING_NUMBER.matcher(numberedClause).replaceFirst("");
                 for (String fragment : CLAIM_SEPARATOR.split(clause)) {
-                    String claim = normalizeClaim(fragment);
-                    if (!claim.isEmpty()) {
-                        claims.putIfAbsent(claim.toLowerCase(Locale.ROOT), claim);
+                    for (String commaSeparated : COMMA_CLAIM_BOUNDARY.split(fragment)) {
+                        String[] interpunctParts = INTERPUNCT_SEPARATOR.split(commaSeparated);
+                        boolean separateParts = interpunctParts.length > 1;
+                        for (String part : interpunctParts) {
+                            if (part.trim().length() < 3) {
+                                separateParts = false;
+                                break;
+                            }
+                        }
+                        for (String part : separateParts ? interpunctParts : new String[] {commaSeparated}) {
+                            String claim = normalizeClaim(part);
+                            if (!claim.isEmpty()) {
+                                claims.putIfAbsent(claim.toLowerCase(Locale.ROOT), claim);
+                            }
+                        }
                     }
                 }
             }
@@ -192,6 +239,15 @@ public class ProductApiService {
                 .replaceAll("^[\\s:：,，;；]+|[\\s:：,，;；.!。]+$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return claim;
+        if (claim.matches("^\\([^)]{1,10}\\)$") && !hasClaimEnding(fragment)) {
+            return "";
+        }
+        return claim.length() >= 3 || (claim.length() >= 2 && hasClaimEnding(fragment))
+                ? claim : "";
+    }
+
+    private static boolean hasClaimEnding(String text) {
+        return text.contains("필요") || text.contains("도움") || text.contains("관여")
+                || text.contains("개선") || text.contains("유지");
     }
 }
