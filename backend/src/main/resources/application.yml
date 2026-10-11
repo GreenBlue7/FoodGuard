@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5435/capstone_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect # DB가 안 켜져 있어도 Dialect 에러가 안 나게 강제 고정
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+server:
+  port: 8080
+
+foodsafety:
+  api-key: ${FOOD_SAFETY_API_KEY:}
+  api-base-url: ${FOOD_SAFETY_API_BASE_URL:http://openapi.foodsafetykorea.go.kr/api}
