@@ -10,7 +10,7 @@ const router = createRouter({
       path: '/inspections/:jobId',
       name: 'inspection-result',
       component: InspectionResultView,
-      props: true, // jobId를 prop으로 받아 라우터 객체에 덜 의존하게 한다
+      props: true, // jobId를 prop으로 받아 라우터 객체에 덜 의존하게
     },
     // 그 외 경로는 모두 첫 화면으로
     { path: '/:pathMatch(.*)*', redirect: '/' },
