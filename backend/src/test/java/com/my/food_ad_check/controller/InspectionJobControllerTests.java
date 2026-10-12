@@ -1,6 +1,7 @@
 package com.my.food_ad_check.controller;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,8 +49,8 @@ class InspectionJobControllerTests {
 
     @Test
     void unknownProductStillCallsJudgeAndCanBeReadByJobId() {
-        when(aiJudgmentService.requestJudgment(any())).thenReturn(
-                new FastApiResponse(List.of(), List.of(), "mock", "2026-10-13", 1L));
+        when(aiJudgmentService.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(
+                new FastApiResponse(List.of(), List.of(), "mock", "2026-10-13", 1L), "DONE"));
         InspectionRecord saved = org.mockito.Mockito.mock(InspectionRecord.class);
         when(saved.getId()).thenReturn(42L);
         when(inspectionRecordRepository.save(any())).thenReturn(saved);
@@ -59,7 +60,7 @@ class InspectionJobControllerTests {
 
         assertEquals("42", created.get("jobId"));
         ArgumentCaptor<FastApiRequest> judgeRequest = ArgumentCaptor.forClass(FastApiRequest.class);
-        verify(aiJudgmentService).requestJudgment(judgeRequest.capture());
+        verify(aiJudgmentService).requestJudgmentOutcome(judgeRequest.capture());
         assertEquals("UNKNOWN", judgeRequest.getValue().product().type());
         ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
         verify(inspectionRecordRepository).save(record.capture());
@@ -68,19 +69,22 @@ class InspectionJobControllerTests {
         Map<String, Object> loaded = controller.get("42");
         assertEquals("DONE", loaded.get("status"));
         assertEquals("UNVERIFIED", loaded.get("productInfoSource"));
-        assertNull(loaded.get("layer2"));
+        assertNotNull(loaded.get("layer2"));
+        assertEquals("mock", ((Map<?, ?>) loaded.get("layer2")).get("model"));
         assertEquals("mock", ((Map<?, ?>) loaded.get("judgeResponse")).get("model"));
     }
 
     @Test
     void unregisteredGeneralFoodAnswerSelectsGeneralFoodForJudge() {
+        when(aiJudgmentService.requestJudgmentOutcome(any()))
+                .thenReturn(new AiJudgmentService.JudgmentOutcome(null, "FAILED"));
         InspectionRecord saved = savedRecord(1L);
         when(inspectionRecordRepository.save(any())).thenReturn(saved);
 
         controller.create(new InspectionJobRequest(List.of(), "GENERAL", "광고 문구"));
 
         ArgumentCaptor<FastApiRequest> judgeRequest = ArgumentCaptor.forClass(FastApiRequest.class);
-        verify(aiJudgmentService).requestJudgment(judgeRequest.capture());
+        verify(aiJudgmentService).requestJudgmentOutcome(judgeRequest.capture());
         assertEquals("GENERAL_FOOD", judgeRequest.getValue().product().type());
     }
 
@@ -90,7 +94,41 @@ class InspectionJobControllerTests {
                 () -> controller.create(new InspectionJobRequest(List.of("one", "two"), null, "광고 문구")));
 
         assertEquals(400, error.getStatusCode().value());
-        verify(aiJudgmentService, never()).requestJudgment(any());
+        verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
+        verify(inspectionRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void timeoutIsSavedAndReturnedWithoutLayer2() {
+        when(aiJudgmentService.requestJudgmentOutcome(any()))
+                .thenReturn(new AiJudgmentService.JudgmentOutcome(null, "TIMEOUT"));
+        InspectionRecord saved = savedRecord(7L);
+        when(inspectionRecordRepository.save(any())).thenReturn(saved);
+
+        controller.create(new InspectionJobRequest(List.of(), "UNKNOWN", "광고 문구"));
+
+        ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
+        verify(inspectionRecordRepository).save(record.capture());
+        assertEquals("TIMEOUT", record.getValue().getStatus());
+        when(inspectionRecordRepository.findById(7L)).thenReturn(Optional.of(record.getValue()));
+        Map<String, Object> loaded = controller.get("7");
+        assertEquals("TIMEOUT", loaded.get("status"));
+        assertNull(loaded.get("layer2"));
+    }
+
+    @Test
+    void invalidRequestsAreRejectedBeforeCallingJudge() {
+        List<InspectionJobRequest> invalid = List.of(
+                new InspectionJobRequest(List.of(), null, " "),
+                new InspectionJobRequest(List.of(" "), null, "광고"),
+                new InspectionJobRequest(List.of(), "NOT_A_TYPE", "광고"));
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> controller.create(null)).getStatusCode().value());
+        for (InspectionJobRequest request : invalid) {
+            assertEquals(400, assertThrows(ResponseStatusException.class,
+                    () -> controller.create(request)).getStatusCode().value());
+        }
+        verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
         verify(inspectionRecordRepository, never()).save(any());
     }
 

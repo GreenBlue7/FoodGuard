@@ -11,6 +11,7 @@ import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
 import com.my.food_ad_check.service.AiJudgmentService;
+import com.my.food_ad_check.service.InspectionResultMapper;
 import com.my.food_ad_check.service.ProductApiService;
 import com.my.food_ad_check.service.RuleCheckService;
 import java.time.LocalDateTime;
@@ -53,7 +54,7 @@ public class InspectionJobController {
     }
 
     @PostMapping
-    public Map<String, String> create(@RequestBody InspectionJobRequest request) {
+    public Map<String, String> create(@RequestBody(required = false) InspectionJobRequest request) {
         if (request == null || request.adText() == null || request.adText().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검수할 광고 문구를 입력해 주세요.");
         }
@@ -103,8 +104,10 @@ public class InspectionJobController {
         FastApiRequest judgeRequest = new FastApiRequest(judgeRequestId, "C",
                 new FastApiRequest.Product(productType,
                         product == null ? List.of() : List.of(product.getPrdlstNm()), approvedFunctions), adText);
-        FastApiResponse judgeResponse = aiJudgmentService.requestJudgment(judgeRequest);
-        String status = judgeResponse == null ? "FAILED" : "DONE";
+        AiJudgmentService.JudgmentOutcome outcome = aiJudgmentService.requestJudgmentOutcome(judgeRequest);
+        FastApiResponse judgeResponse = outcome.response();
+        String status = outcome.status();
+        String judgedAt = OffsetDateTime.now().toString();
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("request", new InspectionJobRequest(ids, request.productTypeAnswer(), adText));
@@ -115,11 +118,12 @@ public class InspectionJobController {
             default -> "UNDETERMINED";
         });
         result.put("layer1", null);
-        result.put("layer2", null);
+        result.put("layer2", judgeResponse == null ? null
+                : InspectionResultMapper.toLayer2(judgeResponse, judgedAt));
         result.put("provisionalStep1", step1);
         result.put("judgeRequestId", judgeRequestId);
         result.put("judgeResponse", judgeResponse);
-        result.put("createdAt", OffsetDateTime.now().toString());
+        result.put("createdAt", judgedAt);
 
         InspectionRecord saved = inspectionRecordRepository.save(new InspectionRecord(
                 product == null ? null : product.getPrdlstReportNo(),

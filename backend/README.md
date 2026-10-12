@@ -102,14 +102,30 @@ unrecognized product uses `GENERAL_FOOD` only when the answer is `GENERAL`;
 otherwise the judge receives `UNKNOWN` in mode C. The judge's case database
 may remain separate; set `JUDGE_URL` to its reachable HTTP endpoint.
 
-The new lookup currently returns `status` (`DONE` or `FAILED`), `request`,
-`productInfoSource`, `provisionalStep1`, and the judge's original response in
-`judgeResponse`. `layer1` and `layer2` are `null` until the team confirms the
-rule applicability and the judge-to-Vue evidence fields. In particular,
-`rule.json` is provisional and must not be presented as an approved legal rule.
-The current judge response does not provide all `LawRef` and `CaseRef` fields
-required by the Vue `InspectionJob` type. Do not invent a product sale status,
-legal text, case year, source, or testimonial flag to fill those fields.
+The new lookup returns `status` (`DONE`, `FAILED`, or `TIMEOUT`), `request`,
+`productInfoSource`, `provisionalStep1`, the original `judgeResponse`, and a
+`layer2` projection when the judge responds. That projection maps sentence
+positions, verdicts, reasons, model and case-corpus date to the Vue field names.
+Judge `HOLD` becomes Vue `REVIEW`; the original verdict remains in
+`judgeResponse`. A judge evidence title is mapped to a Vue case only when it
+matches the current judge title format, so other evidence remains available in
+the raw response. Article numbers are shown with an empty `LawRef.text`, since
+the judge does not send article text. The judge also does not expose its
+testimonial tag: `isTestimonial` is `null` rather than a guessed boolean.
+`dataAsOf` is `null` when `kbVersion` is not an ISO date; when present it dates
+the judge's case corpus, not the product database or legal rules. The Vue type
+currently requires a boolean and a date string, so the team still needs to
+settle those two fields before claiming exact contract compatibility.
+
+`layer1` remains `null`: `rule.json` is provisional and must not be presented
+as an approved legal rule. Do not invent a product sale status or legal text to
+fill the remaining gaps.
+
+The judge call distinguishes socket timeouts from other connection failures.
+Missing or inconsistent judge response fields produce a saved `FAILED` job;
+sentence positions are checked against the submitted text using Unicode code
+points. Blank ad text, multiple or blank product IDs, and unknown product type
+answers return HTTP 400 before the judge is called.
 The older `/api/checks` endpoints remain available.
 
 The remaining Vue result contract is tracked in `../api/api_specs.md`.
