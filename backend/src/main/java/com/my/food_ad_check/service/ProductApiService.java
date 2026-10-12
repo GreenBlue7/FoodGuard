@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -97,6 +98,7 @@ public class ProductApiService {
         int startIdx = 1;
         int totalSaved = 0;
         int totalSkipped = 0;
+        int changedSourceCount = 0;
 
         while (true) {
             int endIdx = startIdx + chunkSize - 1;
@@ -146,6 +148,7 @@ public class ProductApiService {
                 }
 
                 List<Product> productList = new ArrayList<>();
+                int pageChangedSourceCount = 0;
                 for (JsonNode row : rows) {
                     String reportNo = row.path("PRDLST_REPORT_NO").asText("").trim();
                     String productName = row.path("PRDLST_NM").asText("").trim();
@@ -154,13 +157,21 @@ public class ProductApiService {
                         continue;
                     }
 
-                    Product product = new Product();
-                    product.setPrdlstReportNo(reportNo);
+                    String newPrimaryFnclty = row.path("PRIMARY_FNCLTY").asText();
+                    Product product = productRepository.findById(reportNo).orElse(null);
+                    if (product == null) {
+                        product = new Product();
+                        product.setPrdlstReportNo(reportNo);
+                        product.setApprovedFunctions(parsePrimaryFnclty(newPrimaryFnclty));
+                    } else if (!Objects.equals(product.getPrimaryFnclty(), newPrimaryFnclty)) {
+                        // Keep reviewed and reconciled claims, even when the source text changes.
+                        // Such rows need a separate review before their derived claims change.
+                        pageChangedSourceCount++;
+                    }
                     product.setPrdlstNm(productName);
                     product.setBsshNm(row.path("BSSH_NM").asText());
-                    product.setPrimaryFnclty(row.path("PRIMARY_FNCLTY").asText());
+                    product.setPrimaryFnclty(newPrimaryFnclty);
                     product.setProductType("건강기능식품");
-                    product.setApprovedFunctions(parsePrimaryFnclty(product.getPrimaryFnclty()));
 
                     productList.add(product);
                 }
@@ -169,7 +180,12 @@ public class ProductApiService {
                     productRepository.saveAll(productList);
                 }
                 totalSaved += productList.size();
+                changedSourceCount += pageChangedSourceCount;
                 log.info("I0030 적재 진행: 저장 {}건, 필수값 누락으로 제외 {}건", totalSaved, totalSkipped);
+                if (pageChangedSourceCount > 0) {
+                    log.warn("I0030 원문 변경 {}건: 기존 승인 기능 목록은 유지했으며 별도 검토가 필요합니다.",
+                            pageChangedSourceCount);
+                }
 
                 if (endIdx >= totalCount) {
                     break;
@@ -182,7 +198,8 @@ public class ProductApiService {
                 return loadFailure("식약처 API 호출 또는 DB 저장 중 오류가 발생했습니다.", totalSaved, totalSkipped);
             }
         }
-        return "I0030 적재 완료: 저장 " + totalSaved + "건, 필수값 누락으로 제외 " + totalSkipped + "건";
+        return "I0030 적재 완료: 저장 " + totalSaved + "건, 필수값 누락으로 제외 " + totalSkipped
+                + "건, 기능성 원문 변경(기존 목록 유지·검토 필요) " + changedSourceCount + "건";
     }
 
     private String loadFailure(String reason, int totalSaved, int totalSkipped) {

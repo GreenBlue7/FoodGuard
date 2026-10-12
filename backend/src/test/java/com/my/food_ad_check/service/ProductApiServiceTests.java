@@ -9,9 +9,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.ProductRepository;
 import java.net.URI;
 import java.util.List;
+import java.util.Optional;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
@@ -140,6 +143,33 @@ class ProductApiServiceTests {
         assertTrue(result.contains("저장 1건"));
         assertTrue(result.contains("제외 1건"));
         verify(productRepository).saveAll(any());
+    }
+
+    @Test
+    void repeatImportPreservesReviewedFunctionsWhenSourceChanges() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R-001");
+        existing.setPrdlstNm("옛 이름");
+        existing.setPrimaryFnclty("옛 원문");
+        existing.setApprovedFunctions(List.of("수동 확인한 기능"));
+        when(productRepository.findById("R-001")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[
+                  {"PRDLST_REPORT_NO":"R-001","PRDLST_NM":"새 이름","BSSH_NM":"제조사",
+                   "PRIMARY_FNCLTY":"새로운 기능에 도움을 줄 수 있음"}
+                ]}}
+                """);
+
+        String result = productApiService.loadAllProductData();
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Iterable<Product>> saved = ArgumentCaptor.forClass(Iterable.class);
+        verify(productRepository).saveAll(saved.capture());
+        Product reimported = saved.getValue().iterator().next();
+        assertEquals("새 이름", reimported.getPrdlstNm());
+        assertEquals("새로운 기능에 도움을 줄 수 있음", reimported.getPrimaryFnclty());
+        assertEquals(List.of("수동 확인한 기능"), reimported.getApprovedFunctions());
+        assertTrue(result.contains("검토 필요) 1건"));
     }
 
     @Test
