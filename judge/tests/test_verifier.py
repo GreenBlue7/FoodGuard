@@ -30,9 +30,13 @@ def test_단계_없는_위반은_검토_필요로_낮춘다():
     assert fixed.status is Status.REVIEW
 
 
-def test_문제없음인데_단계가_있으면_검토_필요로_올린다():
-    fixed, _ = check("하루 한 포로 활력 충전", status="OK", step="EXAGGERATION")
-    assert fixed.status is Status.REVIEW
+def test_문제없음인데_단계가_있으면_판정은_두고_단계만_비운다():
+    fixed, notes = check("하루 한 포로 활력 충전", status="OK", step="EXAGGERATION")
+    assert (fixed.status, fixed.step) == (Status.OK, Step.NONE)
+    assert notes
+    # 제품 종류에 맞지 않는 단계가 적힌 OK 도 마찬가지
+    fixed, _ = check("면역력 증진에 도움", HF, status="OK", step="HEALTH_FOOD_CONFUSION", matched_function="면역력 증진")
+    assert (fixed.status, fixed.step) == (Status.OK, Step.NONE)
 
 
 def test_문장에_없는_문제_구간은_비운다():
@@ -65,12 +69,32 @@ def test_판단_보류는_제품_종류를_모를_때만_허용한다():
 
 
 def test_제품_종류에_맞지_않는_단계는_검토_필요로_낮춘다():
-    for ctx in (HF, UNKNOWN, NO_PRODUCT):
+    for ctx in (HF, UNKNOWN):
         fixed, _ = check("면역력에 도움", ctx, status="VIOLATION", step="HEALTH_FOOD_CONFUSION")
         assert (fixed.status, fixed.step) == (Status.REVIEW, Step.NONE)
-    for ctx in (GENERAL, UNKNOWN, NO_PRODUCT):
+    for ctx in (GENERAL, UNKNOWN):
         fixed, _ = check("집중력 향상", ctx, status="VIOLATION", step="UNAPPROVED_FUNCTION")
         assert (fixed.status, fixed.step) == (Status.REVIEW, Step.NONE)
+
+
+def test_제품_정보를_쓰지_않는_mode_에서는_기능성_단계를_추측으로_허용한다():
+    for step in ("HEALTH_FOOD_CONFUSION", "UNAPPROVED_FUNCTION"):
+        fixed, notes = check("면역력에 도움", NO_PRODUCT, status="VIOLATION", step=step)
+        assert (fixed.status, fixed.step.value) == (Status.VIOLATION, step)
+        assert notes == []
+
+
+def test_인정_기능성은_띄어쓰기가_달라도_같은_것으로_본다():
+    ctx = VerifyContext(product_type=ProductType.HEALTH_FUNCTIONAL, approved_functions=("피로개선",))
+    fixed, notes = check("피로 개선에 도움", ctx, matched_function="피로 개선")
+    assert (fixed.status, fixed.matched_function) == (Status.OK, "피로개선")
+    assert notes == []
+
+
+def test_제품_정보를_쓰지_않는_mode_에서는_인정_기능성_대조를_하지_않는다():
+    fixed, notes = check("피로 개선에 도움", NO_PRODUCT, matched_function="피로 개선")
+    assert (fixed.status, fixed.matched_function) == (Status.OK, "")
+    assert notes == []
 
 
 def test_제품_종류에_맞는_단계는_유지한다():
