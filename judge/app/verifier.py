@@ -20,6 +20,8 @@ class VerifyContext:
     product_type: ProductType | None = None  # None 이면 제품 정보를 쓰지 않는 mode (A, B)
     approved_functions: tuple[str, ...] = ()
 
+def _squash(text: str) -> str:
+    return "".join(text.split())
 
 def _risky_words(text: str) -> list[str]:
     sentence = Sentence(id="tmp", text=text, start=0, end=len(text))
@@ -35,15 +37,16 @@ def verify(
     reason = verdict.reason.strip()
     problem_text = verdict.problem_text
     revision = verdict.revision.strip()
-    matched_function = verdict.matched_function.strip()
+    # 인정 기능성 대조는 제품 정보를 쓰는 mode 에서만 한다
+    matched_function = verdict.matched_function.strip() if ctx.product_type is not None else ""
 
     if status is Status.HOLD and ctx.product_type is not ProductType.UNKNOWN:
         # 판단 보류는 mode C 에서 제품 종류를 모를 때만 쓴다
         status = Status.REVIEW
         notes.append("HOLD -> REVIEW")
 
-    if step in STEP_REQUIRES and ctx.product_type is not STEP_REQUIRES[step]:
-        # 제품 종류에 맞지 않는 단계 (예: 건강기능식품인데 '건기식 오인')
+    if ctx.product_type is not None and step in STEP_REQUIRES and ctx.product_type is not STEP_REQUIRES[step]:
+        # 제품 종류에 맞지 않는 단계 (예: 건강기능식품인데 '건기식 오인'). 제품 정보를 쓰지 않는 mode 에서는 추측을 허용한다
         notes.append(f"제품 종류에 맞지 않는 단계 {step.value} 를 뺌")
         step = Step.NONE
 
@@ -53,8 +56,15 @@ def verify(
         notes.append("단계 없는 VIOLATION -> REVIEW")
 
     if status is Status.OK and step is not Step.NONE:
-        status = Status.REVIEW
-        notes.append(f"OK 인데 단계가 {step.value} -> REVIEW")
+        # 살펴본 단계를 적어 둔 것뿐이다. 판정은 그대로 두고 단계만 비운다
+        notes.append(f"OK 인데 단계가 {step.value} (단계만 비움)")
+        step = Step.NONE
+
+    if matched_function:
+        # 띄어쓰기만 다른 것은 같은 것으로 본다 ("피로 개선" = "피로개선")
+        same = [f for f in ctx.approved_functions if _squash(f) == _squash(matched_function)]
+        if same:
+            matched_function = same[0]
 
     if matched_function and matched_function not in ctx.approved_functions:
         # 인정받은 기능성 목록에 없는 값을 근거로 들었다

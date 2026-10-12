@@ -1,5 +1,8 @@
 """판정 순서: 문장 나누기 → 사전 태그 → (사례 검색) → Gemini 판정 → 코드 검증 → 응답 형식으로 변환.
 
+사전 태그는 의무 문구 제외와 코드 검증에만 쓰고, Gemini 에는 보여 주지 않는다.
+문장이 많으면 BATCH_SIZE 개씩 나눠서 Gemini 를 여러 번 부른다.
+
 mode A: 문구만 / mode B: + 사례 검색 / mode C: + 사례 검색 + 제품 정보
 """
 
@@ -31,8 +34,8 @@ from app.verifier import VerifyContext, verify
 
 logger = logging.getLogger("judge")
 
-_PROMPTS = Path(__file__).parent / "prompts"
-_PROMPT = (_PROMPTS / "judge_v0.md").read_text(encoding="utf-8")  # mode A, B
+_PROMPTS = Path(__file__).parent / "prompts" / "service"
+_PROMPT = (_PROMPTS / "judge_ab_v0.md").read_text(encoding="utf-8")  # mode A, B
 _CASE_RULES = (_PROMPTS / "cases_v0.md").read_text(encoding="utf-8")  # mode B
 _PROMPT_C = (_PROMPTS / "judge_c_v0.md").read_text(encoding="utf-8")  # mode C
 
@@ -47,6 +50,7 @@ _VIOLATION_TYPE = {
     Step.COMPARISON: "제8조 제1항 제7호",
 }
 
+"""
 _TAG_LABEL = {
     TagType.MANDATORY: "법정 의무 문구",
     TagType.DISEASE: "질병",
@@ -54,6 +58,10 @@ _TAG_LABEL = {
     TagType.EXAGGERATION: "과장",
     TagType.TESTIMONIAL: "체험기",
 }
+"""
+
+# Gemini 를 한 번 부를 때 보내는 문장 수. 한꺼번에 너무 많이 보내면 답을 빠뜨린다 (450문장에서 9문장만 답함)
+BATCH_SIZE = 30
 
 # 의무 문구 앞뒤에 붙어도 되는 말: "본 제품은", 문장부호, 공백
 _FILLER = re.compile(r"(?:본|이)\s*제품은|[\W_]+")
@@ -85,11 +93,9 @@ def _product_block(product: Product) -> str:
 
 def _build_prompt(items: list[_Item], mode: Mode, product: Product | None) -> str:
     lines = []
-    for sentence, tags, cases in items:
+    for sentence, _, cases in items:
+        # 사전 태그는 프롬프트에 넣지 않는다 ("100% 국내산", "보장균수" 같은 정상 문장을 AI 가 의심하게 만들었다)
         lines.append(f"[{sentence.id}] {sentence.text}")
-        if tags:
-            words = ", ".join(f"{_TAG_LABEL[t.type]}({t.text})" for t in tags)
-            lines.append(f"  주의 단어: {words}")
         if cases:
             lines.append("  참고 사례:")
             for hit, _, applicability in cases:
@@ -169,10 +175,14 @@ def run_judge(request: JudgeRequest) -> JudgeResponse:
                 cases = [(hit, True, "") for hit in hits]
             items.append((sentence, tags, cases))
 
-        output = generate_json(_build_prompt(items, mode, product), LlmOutput)
         verdicts: dict[str, LlmVerdict] = {}
-        for v in output.verdicts:
-            verdicts.setdefault(v.sentence_id, v)  # 같은 문장에 답이 여러 개면 첫 번째만
+        for first in range(0, len(items), BATCH_SIZE):
+            batch = items[first : first + BATCH_SIZE]
+            output = generate_json(_build_prompt(batch, mode, product), LlmOutput)
+            asked = {sentence.id for sentence, _, _ in batch}
+            for v in output.verdicts:
+                if v.sentence_id in asked:  # 이번에 묻지 않은 문장에 대한 답은 버린다
+                    verdicts.setdefault(v.sentence_id, v)  # 같은 문장에 답이 여러 개면 첫 번째만
         for sentence, tags, cases in items:
             verdict = verdicts.get(sentence.id)
             if verdict is None:

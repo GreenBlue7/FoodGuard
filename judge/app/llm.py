@@ -25,7 +25,7 @@ def _get_client() -> genai.Client:
         _client = genai.Client(api_key=GEMINI_API_KEY)
     return _client
 
-def generate_json(prompt: str, schema: type[T]) -> T:
+def generate_json(prompt: str, schema: type[T], model: str | None = None) -> T:
     # 프롬포트를 보내고, schema 모양의 JSON 응답을 받아 검증해서 돌려준다.
     client = _get_client()
     config = types.GenerateContentConfig(
@@ -37,7 +37,7 @@ def generate_json(prompt: str, schema: type[T]) -> T:
     for attempt in range(1, _MAX_TRIES + 1):
         try:
             response = client.models.generate_content(
-                model=GEMINI_MODEL, contents=prompt, config=config
+                model=model or GEMINI_MODEL, contents=prompt, config=config
             )
             return schema.model_validate_json(response.text or "")
         except errors.APIError as e:

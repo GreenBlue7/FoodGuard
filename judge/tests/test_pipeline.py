@@ -1,5 +1,6 @@
 """판정 흐름 전체를 Gemini 와 DB 없이 확인한다 (둘 다 가짜로 바꿔 끼운다)."""
 
+import re
 from datetime import date
 
 import pytest
@@ -126,6 +127,29 @@ def test_mode_C_제품_정보가_없으면_판단_보류를_허용한다(fake):
     assert "제품 종류를 확인" in hold.reason
     assert response.results[1].status is Status.VIOLATION
 
+
+def test_사전_태그는_프롬프트에_넣지_않는다(fake):
+    for mode, product in [("A", None), ("B", None), ("C", HF_PRODUCT)]:
+        run(mode, product, ad="100% 국내산 원료만 사용했습니다.\n보장균수 100억 CFU.\n환절기 감기 걱정 끝!")
+    assert all("주의 단어" not in prompt for prompt in fake["prompts"])
+
+
+def test_문장이_많으면_나눠서_보내고_결과는_원래_순서로_합친다(fake, monkeypatch):
+    def answer_what_was_asked(prompt, schema):
+        fake["prompts"].append(prompt)
+        ids = re.findall(r"^\[(s\d+)\]", prompt.split("# 검토할 문장")[1], flags=re.M)
+        # 묻지 않은 문장(s1)에 대한 답을 끼워 넣어도 섞이지 않아야 한다
+        extra = [verdict("s1", status="VIOLATION", step="DISEASE")]
+        return LlmOutput(verdicts=[verdict(i, reason=f"{i} 의 이유") for i in ids] + extra)
+
+    monkeypatch.setattr(pipeline, "generate_json", answer_what_was_asked)
+    count = pipeline.BATCH_SIZE * 2 + 5
+    response = run("A", ad="\n".join(f"{n}번째 문장입니다" for n in range(1, count + 1)))
+    assert len(fake["prompts"]) == 3
+    asked = [len(re.findall(r"^\[s\d+\]", p.split("# 검토할 문장")[1], flags=re.M)) for p in fake["prompts"]]
+    assert asked == [pipeline.BATCH_SIZE, pipeline.BATCH_SIZE, 5]
+    assert [r.reason for r in response.results] == [f"s{n} 의 이유" for n in range(1, count + 1)]
+    assert all(r.status is Status.OK for r in response.results)
 
 def test_프롬프트에_자리표시가_남지_않는다(fake):
     for mode, product in [("A", None), ("B", None), ("C", HF_PRODUCT), ("C", None)]:
