@@ -76,8 +76,43 @@ An import error returns HTTP 502 and reports how many records were saved before
 the failure. Concurrent imports within one backend process return HTTP 409.
 This operation is not atomic across all API pages; coordination across multiple
 backend processes has not been implemented.
+On a repeat import, existing products keep their saved `approvedFunctions`;
+only newly inserted products get an automatically parsed list. Product name,
+manufacturer, type, and the raw `primaryFnclty` source are refreshed. The
+completion message and server log count products whose raw functionality text
+changed, because their preserved list may need manual review. Stop other
+writers before a full import; cross-process edits are not coordinated.
 
-The public Vue API contract remains open in `../api/api_specs.md`.
+## Current Vue integration endpoints
+
+`GET /api/products?query=...` searches up to 20 products and returns the Vue
+field names (`id`, `name`, `manufacturer`, `reportNo`, `type`,
+`approvedFunctions`, `status`). The I0030 product data does not contain a
+verified sale status, so `status` is `null` until the team agrees on a data
+source or adjusts the frontend type. The older `?keyword=` response remains
+available for existing backend clients.
+
+`POST /api/inspections` accepts `{ "productIds": ["report-no"],
+"productTypeAnswer": "GENERAL", "adText": "..." }`. At most one product is
+accepted for the midterm demonstration. The endpoint completes the rule check
+and judge call, saves the result, then returns only `{ "jobId": "1" }`.
+This is synchronous execution, not a background queue. The browser can then
+call `GET /api/inspections/{jobId}` to read the saved result. A missing or
+unrecognized product uses `GENERAL_FOOD` only when the answer is `GENERAL`;
+otherwise the judge receives `UNKNOWN` in mode C. The judge's case database
+may remain separate; set `JUDGE_URL` to its reachable HTTP endpoint.
+
+The new lookup currently returns `status` (`DONE` or `FAILED`), `request`,
+`productInfoSource`, `provisionalStep1`, and the judge's original response in
+`judgeResponse`. `layer1` and `layer2` are `null` until the team confirms the
+rule applicability and the judge-to-Vue evidence fields. In particular,
+`rule.json` is provisional and must not be presented as an approved legal rule.
+The current judge response does not provide all `LawRef` and `CaseRef` fields
+required by the Vue `InspectionJob` type. Do not invent a product sale status,
+legal text, case year, source, or testimonial flag to fill those fields.
+The older `/api/checks` endpoints remain available.
+
+The remaining Vue result contract is tracked in `../api/api_specs.md`.
 
 ## Fresh database and backend test check
 
