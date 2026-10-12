@@ -30,6 +30,14 @@ public class ProductApiService {
             "(?=[①-⑳])|(?=\\(\\d{1,2}[.)]\\s)|(?<!\\()(?=\\d{1,2}[.)]\\s)");
     private static final Pattern NUMBERED_PREFIX = Pattern.compile(
             "^(?:[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)])");
+    private static final Pattern LISTED_CLAIM = Pattern.compile(
+            "^\\s*(?:[-•*]\\s*|[①-⑳]|\\(\\d{1,2}[.)]|\\d{1,2}[.)]|\\([가-하]\\))");
+    private static final Pattern CLEAR_SECTION_HEADING = Pattern.compile(
+            "^(?:비타민\\s*[A-EK](?:\\s*\\d{1,2})?|프로바이오틱스|판토텐산|나이아신|비오틴|"
+                    + "마그네슘|칼슘|아연|철|셀레늄|셀렌|요오드|망간|몰리브덴|구리|크롬|엽산|일일섭취량"
+                    + "|셀레늄\\(or 셀렌\\)|셀레늄\\(또는 셀렌\\))$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern LEADING_ALPHA_MARKER = Pattern.compile("^\\([가-하]\\)\\s*");
     private static final Pattern CLAIM_SEPARATOR = Pattern.compile("\\s*[，;；]+\\s*");
     private static final Pattern INTERPUNCT_SEPARATOR = Pattern.compile("\\s*[·ㆍ・･]+\\s*");
     private static final Pattern COMMA_CLAIM_BOUNDARY = Pattern.compile(
@@ -183,6 +191,15 @@ public class ProductApiService {
     }
 
     public List<String> parsePrimaryFnclty(String primaryFnclty) {
+        return parsePrimaryFnclty(primaryFnclty, true);
+    }
+
+    // Kept for the one-time reconciliation: only unchanged v1 output may be replaced.
+    List<String> parsePrimaryFncltyLegacy(String primaryFnclty) {
+        return parsePrimaryFnclty(primaryFnclty, false);
+    }
+
+    private List<String> parsePrimaryFnclty(String primaryFnclty, boolean structuralCleanup) {
         if (primaryFnclty == null || primaryFnclty.trim().isEmpty()) {
             return List.of();
         }
@@ -191,9 +208,10 @@ public class ProductApiService {
                 .replace('\u00a0', ' ')
                 .replace('\r', '\n');
         Map<String, String> claims = new LinkedHashMap<>();
+        String[] lines = normalized.split("\\n");
 
-        for (String line : normalized.split("\\n")) {
-            String cleanedLine = line.trim();
+        for (int lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+            String cleanedLine = lines[lineIndex].trim();
             if (cleanedLine.isEmpty()) {
                 continue;
             }
@@ -201,6 +219,12 @@ public class ProductApiService {
             cleanedLine = cleanedLine.replaceFirst("^[-•*]\\s*", "");
             cleanedLine = cleanedLine.replaceFirst("^\\[[^]]+\\]\\s*", "");
             cleanedLine = cleanedLine.replaceFirst("^[^:：]{1,40}[:：]\\s*", "");
+            if (structuralCleanup && isHeadingBeforeListedClaim(lines, lineIndex, cleanedLine)) {
+                continue;
+            }
+            if (structuralCleanup) {
+                cleanedLine = LEADING_ALPHA_MARKER.matcher(cleanedLine).replaceFirst("");
+            }
 
             String[] numberedClauses = NUMBERED_CLAUSE.split(cleanedLine);
             for (int clauseIndex = 0; clauseIndex < numberedClauses.length; clauseIndex++) {
@@ -232,6 +256,19 @@ public class ProductApiService {
             }
         }
         return new ArrayList<>(claims.values());
+    }
+
+    private static boolean isHeadingBeforeListedClaim(String[] lines, int index, String current) {
+        if (hasClaimEnding(current) || !CLEAR_SECTION_HEADING.matcher(current).matches()) {
+            return false;
+        }
+        for (int next = index + 1; next < lines.length; next++) {
+            String following = lines[next].trim();
+            if (!following.isEmpty()) {
+                return LISTED_CLAIM.matcher(following).find() && hasClaimEnding(following);
+            }
+        }
+        return false;
     }
 
     private String normalizeClaim(String fragment) {

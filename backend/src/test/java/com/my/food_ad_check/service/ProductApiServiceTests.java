@@ -61,6 +61,41 @@ class ProductApiServiceTests {
     }
 
     @Test
+    void skipsIngredientHeadingsAndRemovesKoreanListMarkers() {
+        String source = "비타민D\n(가) 칼슘과 인이 흡수되고 이용되는데 필요\n"
+                + "(나) 뼈의 형성과 유지에 필요\n"
+                + "-판토텐산\n①지방, 탄수화물, 단백질 대사와 에너지 생성에 필요";
+
+        assertEquals(List.of(
+                "칼슘과 인이 흡수되고 이용되는데 필요",
+                "뼈의 형성과 유지에 필요",
+                "지방, 탄수화물, 단백질 대사와 에너지 생성에 필요"
+        ), productApiService.parsePrimaryFnclty(source));
+    }
+
+    @Test
+    void retainsShortClaimsAndUnclearUnnumberedLines() {
+        assertEquals(List.of("수면", "항산화"), productApiService.parsePrimaryFnclty(
+                "수면에 도움을 줄 수 있음\n항산화에 도움을 줄 수 있음"));
+        assertEquals(List.of("테아닌", "스트레스로 인한 긴장완화"),
+                productApiService.parsePrimaryFnclty(
+                        "테아닌\n스트레스로 인한 긴장완화에 도움을 줄 수 있음"));
+        assertEquals(List.of("근육, 결합조직 등 신체조직의 구성성분", "에너지 생성에 필요"),
+                productApiService.parsePrimaryFnclty(
+                        "근육, 결합조직 등 신체조직의 구성성분\n①에너지 생성에 필요"));
+        assertEquals(List.of("항산화", "정상적인 면역기능에 필요"),
+                productApiService.parsePrimaryFnclty("항산화\n①정상적인 면역기능에 필요"));
+    }
+
+    @Test
+    void legacyParserReproducesSavedValuesForSafeReconciliation() {
+        String source = "비타민D\n(가) 칼슘과 인이 흡수되고 이용되는데 필요";
+
+        assertEquals(List.of("비타민D", "(가) 칼슘과 인이 흡수되고 이용되는데 필요"),
+                productApiService.parsePrimaryFncltyLegacy(source));
+    }
+
+    @Test
     void parsesLabeledMultilineIngredientsAndCommaSeparatedClaims() {
         String source = "- 홍삼 : 면역력 증진·피로개선에 도움을 줄 수 있음\n"
                 + "- 나이아신 : 체내 에너지 생성에 필요\n"

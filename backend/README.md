@@ -29,6 +29,28 @@ backfill has no mode that overwrites saved functions; parser revisions require
 a separately reviewed data migration. Some ingredient headings in free-text
 source data still need manual review.
 
+The parser now removes a small set of clear nutrient/section headings only when
+they precede an explicitly numbered claim. It also removes leading Korean
+section markers such as `(가)` from the extracted phrase. Short claims such as
+`수면` and `항산화` are retained. This is text segmentation, not legal approval of
+the extracted phrases. Ambiguous headings remain for manual review.
+
+To reconcile previously saved lists after this parser revision, first back up
+the database and stop other writers. Preview, then apply the separate opt-in
+runner from `backend`:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --foodsafety.approved-functions-reconcile-enabled=true --foodsafety.approved-functions-reconcile-mode=preview"
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --foodsafety.approved-functions-reconcile-enabled=true --foodsafety.approved-functions-reconcile-mode=apply"
+```
+
+The runner updates a product only when every stored function and its position
+still exactly match the previous parser output. It skips manually changed lists
+and any transformation that cannot be explained by removing a clear heading or
+its leading `(가)`-style marker. Each 500-product batch is transactional. A
+second preview after apply should report `changedProducts=0`; it reports already
+reconciled products separately. The runner is disabled during normal startup.
+
 The default JDBC URL is `jdbc:postgresql://localhost:5432/foodguard`. To use
 the existing Docker database, set
 `DB_URL=jdbc:postgresql://localhost:5435/capstone_db`, `DB_USERNAME=postgres`,
@@ -56,3 +78,13 @@ This operation is not atomic across all API pages; coordination across multiple
 backend processes has not been implemented.
 
 The public Vue API contract remains open in `../api/api_specs.md`.
+
+## Fresh database and backend test check
+
+Create an empty PostgreSQL database, apply `db/001_core.sql` and then
+`db/002_pgvector.sql`, and set `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD` to
+that database. Use a valid JDK 17 or newer installation for `JAVA_HOME`; the
+project compiles with a Java 17 toolchain. From `backend`, run
+`gradlew.bat test` (or `./gradlew test` on Unix). The Spring context test also
+checks that Hibernate can validate the new schema. This check does not create
+the judge-owned `cases` table or test the full Vue-to-judge flow.
