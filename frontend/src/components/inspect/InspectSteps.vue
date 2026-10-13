@@ -33,7 +33,7 @@ const steps = computed(() => {
 <template>
   <ol aria-label="진행 단계" class="flex gap-2">
     <li v-for="step in steps" :key="step.label" class="flex min-w-0 flex-1 flex-col gap-2">
-      <span class="px-1 text-sm text-ink-700">{{ step.label }}</span>
+      <span class="px-1 font-heading text-sm font-medium text-ink-700">{{ step.label }}</span>
       <span
         class="flex h-12 items-center gap-2 rounded-full px-5 text-sm"
         :class="STATE_CLASSES[step.state]"

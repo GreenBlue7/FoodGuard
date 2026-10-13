@@ -6,6 +6,9 @@ import type { IconName } from '@/components/ui/icon-names'
 // 클릭했을 때 할 일은 AppShell이 정함
 const emit = defineEmits<{ 'attach-click': [] }>()
 
+// 이미지 업로드는 기말 범위라 중간 발표에서는 버튼을 숨김. 기능을 붙일 때 true로 변경
+const SHOW_IMAGE_ATTACH = false
+
 // 메뉴 항목 하나의 모양
 interface NavItem {
   to: string // 이동할 라우트 이름
@@ -63,6 +66,7 @@ function isActive(item: NavItem) {
 
     <!-- 상세페이지 이미지 첨부: 아직 업로드 API가 없어 버튼만 두고 이벤트만 올림 -->
     <button
+      v-if="SHOW_IMAGE_ATTACH"
       type="button"
       class="flex items-center gap-2 rounded-full bg-white/60 px-5 py-3.5 text-sm text-ink-900 transition-colors hover:bg-white"
       @click="emit('attach-click')"

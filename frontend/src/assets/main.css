@@ -17,11 +17,13 @@
   /* 그라데이션 아래 깔리는 바탕색 */
   --color-canvas: #ecebe7;
 
-  /* 본문도 Wanted Sans로 통일한다. 시스템 글꼴(맑은 고딕 등)로 떨어지면 한글이 투박해 보인다 */
+  /* 글꼴 (모두 main.ts에서 불러옴)
+     본문: Wanted Sans / 소제목·큰 숫자: IBM Plex Sans KR / 로고: Fraunces */
   --font-sans:
-    'Wanted Sans Variable', 'Wanted Sans', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
-    'Malgun Gothic', 'Noto Sans KR', sans-serif;
-  --font-fraunces: 'Fraunces', serif;
+    'Wanted Sans Variable', 'Wanted Sans', -apple-system, BlinkMacSystemFont, system-ui,
+    'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
+  --font-heading: 'IBM Plex Sans KR', 'Wanted Sans Variable', 'Apple SD Gothic Neo', sans-serif;
+  --font-fraunces: 'Fraunces Variable', Georgia, serif;
 
   /* 진행률을 모를 때 쓰는 진행 바. 1/3 길이 막대가 트랙을 가로질러 움직인다 */
   --animate-progress-slide: progress-slide 1.4s ease-in-out infinite;

@@ -69,7 +69,9 @@ export interface Sentence {
   isMandatory: boolean // 의무 문구라서 판정 대상에서 제외
 }
 
-export type Verdict = 'VIOLATION' | 'REVIEW' | 'OK'
+// HOLD: 판단 보류. 제품 종류를 몰라서 기능성 표현을 판정하지 못한 문장
+// (judge 모드 C에서 제품 종류가 UNKNOWN일 때 나옴)
+export type Verdict = 'VIOLATION' | 'REVIEW' | 'OK' | 'HOLD'
 
 export interface LawRef {
   id: string

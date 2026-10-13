@@ -53,7 +53,6 @@ const typeChoice = ref<ProductTypeAnswer | null>(store.productTypeAnswer)
 const disabledReason = computed(() => {
   if (store.adText.trim() === '') return '광고 문구를 입력해 주세요'
   if (store.selectedProducts.length === 0 && store.productTypeAnswer === null) {
-
     return typeChoice.value === 'HEALTH_FUNCTIONAL'
       ? "신고번호로 다시 검색하거나 '번호 없이 진행'을 눌러 주세요"
       : '제품을 선택하거나 제품 종류를 알려 주세요'
@@ -150,7 +149,7 @@ async function submit() {
           >
             검사를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.
           </p>
-          
+
           <button
             type="button"
             class="group flex w-full items-center justify-between gap-3 rounded-full bg-primary py-2 pr-2 pl-7 text-base text-white shadow-sm transition-colors duration-200 enabled:hover:bg-black disabled:cursor-not-allowed disabled:bg-black/[0.07] disabled:text-ink-600 disabled:shadow-none"
