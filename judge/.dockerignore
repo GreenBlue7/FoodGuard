@@ -1,0 +1,23 @@
+# Python virtual environment (will be rebuilt inside container)
+.venv
+
+# Python cache and compiled bytecode
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+
+# Secrets (passed in by docker-compose, never baked into the image)
+.env
+.env.*
+
+# Tests (not needed at runtime)
+tests/
+pytest.ini
+
+# Git metadata
+.git
+.gitignore
+
+# OS junk
+.DS_Store

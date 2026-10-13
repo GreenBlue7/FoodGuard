@@ -1,6 +1,5 @@
 @import 'tailwindcss';
 
-
 /* 디자인 토큰. 차콜(주색) + 노랑(포인트) + 회색→노랑 그라데이션 배경 */
 @theme {
   --color-ink-900: #1c1c1c;
@@ -70,6 +69,13 @@
     /* 한국어를 어절 단위로 줄바꿈한다("줍니/다." 방지). 한 줄보다 긴 단어는 그래도 끊는다 */
     word-break: keep-all;
     overflow-wrap: break-word;
+  }
+
+  /* 소제목(페이지 제목, 카드 제목, 구역 제목)은 Plex를 살짝 굵게 */
+  h1,
+  h2,
+  h3 {
+    @apply font-heading font-medium;
   }
 
   input,

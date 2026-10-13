@@ -1,0 +1,46 @@
+name: foodguard
+
+services:
+    # PostgreSQL + pgvector
+    db:
+        image: pgvector/pgvector:pg17
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-foodguard}
+            POSTGRES_USER: ${POSTGRES_USER:-postgres}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+        ports:
+            - "${POSTGRES_HOST_PORT:-5433}:5432" # Maps port 5433 of host to port 5432 of container
+        volumes:
+            - postgres_data:/var/lib/postgresql/data # Named volume for PostgreSQL data
+            # Init scripts --> run once, only when the data volume is empty (in file name order)
+            - ./backend/db/001_core.sql:/docker-entrypoint-initdb.d/01_backend_core.sql:ro # Backend tables (Spring uses ddl-auto: validate)
+            - ./backend/db/002_pgvector.sql:/docker-entrypoint-initdb.d/02_backend_pgvector.sql:ro # pgvector extension
+            - ./judge/sql/cases.sql:/docker-entrypoint-initdb.d/10_cases.sql:ro # Judge case table
+        # Readiness probe
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-foodguard}"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+
+    # Judge Engine
+    judge:
+        build: ./judge # Build from Dockerfile in this directory
+        ports:
+            - "${JUDGE_PORT:-8000}:8000" # Fallback port: 8000
+        environment:
+            # Gemini settings - read from .env in this directory
+            GEMINI_API_KEY: ${GEMINI_API_KEY}
+            GEMINI_MODEL: ${GEMINI_MODEL}
+            # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
+            DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
+        volumes:
+            - hf_cache:/cache/huggingface # Named volume for the bge-m3 model cache
+        depends_on:
+            db:
+                condition: service_healthy
+
+# Named volumes
+volumes:
+    postgres_data:
+    hf_cache:
