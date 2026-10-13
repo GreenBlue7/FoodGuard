@@ -1,9 +1,13 @@
-import { onWatcherCleanup, ref, watch } from 'vue'
+import { computed, onWatcherCleanup, ref, watch } from 'vue'
 import { inspectionApi } from '@/api/inspection'
 import type { Product } from '@/types/inspection'
 
 const DEBOUNCE_MS = 300
 const MIN_QUERY_LENGTH = 2
+// 한글을 조합하는 중에 끝에 남은 낱자(ㄱ~ㅣ, 호환용 자모 영역)
+// "홍삼 ㅌ"처럼 다음 글자를 치는 중간 상태로 검색하면 결과가 0건이 되어
+// 목록과 "제품을 찾지 못했습니다"가 글자마다 번갈아 나타나므로 검색어에서 뺌
+const TRAILING_JAMO = /[ㄱ-ㆎ]+$/u
 
 // idle: 검색 전(검색어 2글자 미만) / loading: 입력 대기 또는 요청 중 / done: 결과 도착 / error: 요청 실패
 type SearchStatus = 'idle' | 'loading' | 'done' | 'error'
@@ -14,8 +18,11 @@ export function useProductSearch() {
   const results = ref<Product[]>([])
   const status = ref<SearchStatus>('idle')
 
-  watch(query, (value) => {
-    const keyword = value.trim()
+  // 실제로 검색할 문자열. "홍삼"과 "홍삼 ㅌ"은 같은 값이 되므로
+  // 낱자만 덧붙는 동안에는 아래 watch가 다시 실행되지 않음
+  const searchKeyword = computed(() => query.value.trim().replace(TRAILING_JAMO, '').trim())
+
+  watch(searchKeyword, (keyword) => {
     if (keyword.length < MIN_QUERY_LENGTH) {
       results.value = []
       status.value = 'idle'
