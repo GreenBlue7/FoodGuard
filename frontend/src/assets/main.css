@@ -57,6 +57,12 @@
 }
 
 @layer base {
+  /* 스크롤바 자리를 항상 비워 둠. 페이지 높이가 화면을 넘나들 때
+     스크롤바가 생겼다 없어지며 화면 전체가 좌우로 밀리는 것을 막음 */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   body {
     @apply font-sans text-ink-900 antialiased;
     /* 왼쪽 위는 옅은 회색, 오른쪽으로 갈수록 노란빛이 번진다.

@@ -116,7 +116,8 @@ function onCardClick(event: MouseEvent) {
     >
       <li v-for="law in finding.lawRefs" :key="law.id">
         <p class="text-ink-900">{{ law.title }} {{ law.article }}</p>
-        <p class="mt-0.5 text-ink-700">{{ law.text }}</p>
+        <!-- 조문 요지가 아직 없으면(빈 문자열) 빈 줄을 남기지 않음 -->
+        <p v-if="law.text" class="mt-0.5 text-ink-700">{{ law.text }}</p>
       </li>
     </ul>
     <ul
@@ -128,7 +129,17 @@ function onCardClick(event: MouseEvent) {
       <li v-for="item in finding.cases" :key="item.id">
         <p class="break-words text-ink-900">“{{ item.excerpt }}”</p>
         <p class="mt-0.5 text-xs text-ink-600 tabular-nums">
-          {{ item.year }}년 · {{ item.source }}
+          {{ item.year }}년 ·
+          <a
+            v-if="isUrl(item.source)"
+            :href="item.source"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline underline-offset-2 hover:text-ink-900"
+          >
+            출처 보기<span class="sr-only"> (새 탭에서 열림)</span>
+          </a>
+          <template v-else>{{ item.source }}</template>
         </p>
       </li>
     </ul>
