@@ -22,7 +22,7 @@ const items = computed(() =>
   props.products.map((product) => ({
     product,
     selected: props.selectedIds.includes(product.id),
-    badge: STATUS_BADGES[product.status],
+    badge: product.status ? STATUS_BADGES[product.status] : undefined,
   })),
 )
 

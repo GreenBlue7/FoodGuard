@@ -25,10 +25,15 @@ const lawsOpen = ref(false)
 const casesOpen = ref(false)
 const id = useId()
 
-// 마우스로는 카드 어디를 눌러도 원문을 강조한다. 카드 안의 버튼을 누른 경우는 그 버튼의 동작만 한다.
+// 백엔드는 사례 출처로 원문 URL을 보내기도 함. URL이면 글자 대신 링크로 보여 줌
+function isUrl(source: string) {
+  return /^https?:\/\//.test(source)
+}
+
+// 마우스로는 카드 어디를 눌러도 원문을 강조한다. 카드 안의 버튼·링크를 누른 경우는 그 동작만 한다.
 // 키보드·화면 낭독기 사용자는 "원문에서 보기" 버튼으로 같은 동작을 한다.
 function onCardClick(event: MouseEvent) {
-  if (event.target instanceof Element && event.target.closest('button')) return
+  if (event.target instanceof Element && event.target.closest('button, a')) return
   emit('select')
 }
 </script>
