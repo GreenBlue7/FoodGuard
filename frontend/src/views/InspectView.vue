@@ -34,7 +34,9 @@ async function removeChip(productId: string, index: number) {
 const notFound = computed(() => status.value === 'done' && results.value.length === 0)
 
 const statusMessage = computed(() => {
-  if (status.value === 'loading') return '검색 중…'
+  // 이전 결과가 화면에 남아 있으면 목록을 흐리게 하는 것으로 검색 중임을 알림
+  // 글자마다 이 줄이 생겼다 사라지면 아래 목록이 위아래로 흔들리기 때문
+  if (status.value === 'loading') return results.value.length > 0 ? '' : '검색 중…'
   if (status.value === 'error') return '검색에 실패했습니다. 잠시 후 다시 시도해 주세요.'
   if (notFound.value) return '제품을 찾지 못했습니다.'
   return ''
@@ -53,7 +55,6 @@ const typeChoice = ref<ProductTypeAnswer | null>(store.productTypeAnswer)
 const disabledReason = computed(() => {
   if (store.adText.trim() === '') return '광고 문구를 입력해 주세요'
   if (store.selectedProducts.length === 0 && store.productTypeAnswer === null) {
-
     return typeChoice.value === 'HEALTH_FUNCTIONAL'
       ? "신고번호로 다시 검색하거나 '번호 없이 진행'을 눌러 주세요"
       : '제품을 선택하거나 제품 종류를 알려 주세요'
@@ -105,11 +106,16 @@ async function submit() {
 
         <p role="status" class="px-1 text-sm text-ink-700 empty:mb-0">{{ statusMessage }}</p>
 
-        <!-- 결과 목록을 chip·요약보다 위에 -> 제품을 고를 때 목록이 아래로 밀리지 않게 -->
+        <!-- 결과 목록을 chip·요약보다 위에 -> 제품을 고를 때 목록이 아래로 밀리지 않게
+             검색 중에도 이전 결과를 흐리게 남겨 둠. 글자마다 목록을 지웠다 다시 그리면
+             페이지 높이가 바뀌어 화면 전체가 흔들림 -->
         <ProductList
-          v-if="status === 'done' && results.length > 0"
+          v-if="results.length > 0"
           :products="results"
           :selected-ids="selectedIds"
+          :aria-busy="status === 'loading'"
+          class="transition-opacity duration-200"
+          :class="{ 'opacity-50': status === 'loading' }"
           @select="store.selectProduct"
         />
 
@@ -150,7 +156,7 @@ async function submit() {
           >
             검사를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.
           </p>
-          
+
           <button
             type="button"
             class="group flex w-full items-center justify-between gap-3 rounded-full bg-primary py-2 pr-2 pl-7 text-base text-white shadow-sm transition-colors duration-200 enabled:hover:bg-black disabled:cursor-not-allowed disabled:bg-black/[0.07] disabled:text-ink-600 disabled:shadow-none"

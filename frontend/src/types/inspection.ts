@@ -9,7 +9,7 @@ export interface Product {
   reportNo: string | null // 신고번호. 일반식품은 없을 수 있음
   type: ProductType
   approvedFunctions: string[] // 식약처 인정 기능성. 건기식이 아니면 빈 배열
-  status: ProductStatus
+  status: ProductStatus | null // 현재 식약처 제품 데이터에 판매 상태가 없어 백엔드는 null로 보냄
 }
 
 // 2a 흐름에서 사용자가 고른 답
@@ -69,20 +69,22 @@ export interface Sentence {
   isMandatory: boolean // 의무 문구라서 판정 대상에서 제외
 }
 
-export type Verdict = 'VIOLATION' | 'REVIEW' | 'OK'
+// HOLD: 판단 보류. 제품 종류를 몰라서 기능성 표현을 판정하지 못한 문장
+// (judge 모드 C에서 제품 종류가 UNKNOWN일 때 나옴)
+export type Verdict = 'VIOLATION' | 'REVIEW' | 'OK' | 'HOLD'
 
 export interface LawRef {
   id: string
   title: string // 예: "식품 등의 표시·광고에 관한 법률"
   article: string // 예: "제8조 제1항 제1호"
-  text: string // 조문 요지
+  text: string // 조문 요지. 판정엔진이 아직 주지 않아 빈 문자열일 수 있음
 }
 
 export interface CaseRef {
   id: string
   year: number
   excerpt: string // 적발된 문구
-  source: string // 출처 (예: "식약처 보도자료 2024-03")
+  source: string // 출처 이름(예: "식약처 보도자료 2024-03") 또는 원문 URL
 }
 
 export interface Finding {
@@ -92,13 +94,13 @@ export interface Finding {
   reason: string
   lawRefs: LawRef[]
   cases: CaseRef[] // 비어 있을 수 있음
-  isTestimonial: boolean // 후기 형식 문장 여부
+  isTestimonial: boolean | null // 후기 형식 문장 여부. null이면 판정엔진이 알려 주지 않음
 }
 
 export interface Layer2Result {
   sentences: Sentence[]
   findings: Finding[]
   model: string // 예: "gemini-2.5-pro"
-  dataAsOf: string // 판단 기준일 YYYY-MM-DD
+  dataAsOf: string | null // 판단 기준일 YYYY-MM-DD. 사례 DB가 비어 있으면 null
   judgedAt: string // ISO 8601 형식
 }

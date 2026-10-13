@@ -1,11 +1,13 @@
 export type IconName =
   | 'shield'
+  | 'leaf'
   | 'search'
   | 'upload'
   | 'check'
   | 'x'
   | 'alert'
   | 'info'
+  | 'help'
   | 'minus'
   | 'loader'
   | 'clock'

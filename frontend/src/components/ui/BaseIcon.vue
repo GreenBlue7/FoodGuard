@@ -25,6 +25,11 @@ defineProps<{
       <polyline points="9 12 11 14 15 10" />
     </template>
 
+    <template v-else-if="name === 'leaf'">
+      <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+      <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+    </template>
+
     <template v-else-if="name === 'search'">
       <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
     </template>
@@ -54,6 +59,12 @@ defineProps<{
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="16" x2="12" y2="12" />
       <line x1="12" y1="8" x2="12.01" y2="8" />
+    </template>
+
+    <template v-else-if="name === 'help'">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
     </template>
 
     <template v-else-if="name === 'minus'">
