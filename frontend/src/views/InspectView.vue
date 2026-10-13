@@ -33,13 +33,15 @@ async function removeChip(productId: string, index: number) {
 
 const notFound = computed(() => status.value === 'done' && results.value.length === 0)
 
-const statusMessage = computed(() => {
-  // 이전 결과가 화면에 남아 있으면 목록을 흐리게 하는 것으로 검색 중임을 알림
-  // 글자마다 이 줄이 생겼다 사라지면 아래 목록이 위아래로 흔들리기 때문
-  if (status.value === 'loading') return results.value.length > 0 ? '' : '검색 중…'
-  if (status.value === 'error') return '검색에 실패했습니다. 잠시 후 다시 시도해 주세요.'
-  if (notFound.value) return '제품을 찾지 못했습니다.'
-  return ''
+// 마지막으로 끝난 검색의 안내 문구
+// 검색이 진행되는 동안에는 이 문구도 목록도 바꾸지 않고, 결과가 오면 한 번에 바꿈
+// "검색 중…" 같은 중간 상태를 보여 주면 단어 사이에서 멈출 때마다 화면이 깜빡이기 때문
+const statusMessage = ref('')
+watch(status, (value) => {
+  if (value === 'idle') statusMessage.value = ''
+  else if (value === 'error')
+    statusMessage.value = '검색에 실패했습니다. 잠시 후 다시 시도해 주세요.'
+  else if (value === 'done') statusMessage.value = notFound.value ? '제품을 찾지 못했습니다.' : ''
 })
 
 const typeQuestionOpen = ref(store.productTypeAnswer !== null)
