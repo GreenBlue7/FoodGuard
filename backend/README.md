@@ -8,6 +8,13 @@ database. The upgrade script also adds the inspection-to-product foreign key
 and inspection-date index; existing inspection report numbers must refer to
 products. The application validates tables on startup and does not alter them.
 
+In both cases, apply `db/003_users.sql` afterwards. It adds the `users` table
+and a required `inspection_records.user_id` that cascades on user deletion.
+Inspection records saved before accounts existed have no owner, so delete them
+first; otherwise the script stops with "column user_id contains null values".
+The script is safe to re-run. Docker applies it automatically only when the
+database volume is created; apply it manually to an existing volume.
+
 The existing Docker database was imported before `approvedFunctions` was
 stored. After creating `product_approved_functions`, the one-time backfill can
 populate it from `products.primary_fnclty`. Set `DB_URL`, `DB_USERNAME`, and

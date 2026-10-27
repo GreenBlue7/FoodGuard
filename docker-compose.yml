@@ -15,6 +15,7 @@ services:
             # Init scripts --> run once, only when the data volume is empty (in file name order)
             - ./backend/db/001_core.sql:/docker-entrypoint-initdb.d/01_backend_core.sql:ro # Backend tables (Spring uses ddl-auto: validate)
             - ./backend/db/002_pgvector.sql:/docker-entrypoint-initdb.d/02_backend_pgvector.sql:ro # pgvector extension
+            - ./backend/db/003_users.sql:/docker-entrypoint-initdb.d/03_backend_users.sql:ro # Users + inspection ownership
             - ./judge/sql/cases.sql:/docker-entrypoint-initdb.d/10_cases.sql:ro # Judge case table
         # Readiness probe
         healthcheck:
