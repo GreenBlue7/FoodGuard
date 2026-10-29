@@ -8,6 +8,13 @@ database. The upgrade script also adds the inspection-to-product foreign key
 and inspection-date index; existing inspection report numbers must refer to
 products. The application validates tables on startup and does not alter them.
 
+In both cases, apply `db/003_users.sql` afterwards. It adds the `users` table
+and a required `inspection_records.user_id` that cascades on user deletion.
+Inspection records saved before accounts existed have no owner, so delete them
+first; otherwise the script stops with "column user_id contains null values".
+The script is safe to re-run. Docker applies it automatically only when the
+database volume is created; apply it manually to an existing volume.
+
 The existing Docker database was imported before `approvedFunctions` was
 stored. After creating `product_approved_functions`, the one-time backfill can
 populate it from `products.primary_fnclty`. Set `DB_URL`, `DB_USERNAME`, and
@@ -69,6 +76,16 @@ Set `JUDGE_URL` to the full judge endpoint (default `http://localhost:8000/judge
 and `JUDGE_TIMEOUT_MS` to the HTTP connection/read timeout (default 30000).
 The judge requires its own configuration and database tables.
 
+`JWT_SECRET` is required: the backend refuses to start without it. Set it to
+the output of `openssl rand -base64 32` (at least 32 random bytes, Base64),
+either as an environment variable or as a `JWT_SECRET=...` line in the
+repository-root `.env` (copy `.env.example`). The backend reads that file when
+started from this directory, which is the default for `bootRun` and for an
+IDE run configuration whose working directory is `backend`.
+Anyone holding this value can mint a token for any user, so never commit it.
+Changing it invalidates every issued token. `JWT_ACCESS_TOKEN_TTL` sets the
+access token lifetime (default `1h`).
+
 With a JDK available through `JAVA_HOME`, run `./gradlew bootRun` (Windows:
 `gradlew.bat bootRun`) from this directory. Product import is an explicit
 `POST /api/data/load-all` operation; it is not started by the application.
@@ -126,7 +143,9 @@ Missing or inconsistent judge response fields produce a saved `FAILED` job;
 sentence positions are checked against the submitted text using Unicode code
 points. Blank ad text, multiple or blank product IDs, and unknown product type
 answers return HTTP 400 before the judge is called.
-The older `/api/checks` endpoints remain available.
+The older `/api/checks` endpoints have been removed; the Vue client uses only
+`/api/inspections`. Every endpoint except sign-up and login requires a JWT, and
+an inspection record is visible only to the user who created it.
 
 The remaining Vue result contract is tracked in `../api/api_specs.md`.
 
