@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
+import { authApi } from '@/api/auth'
 import BaseIcon from '@/components/ui/BaseIcon.vue'
+import BrandLogo from './BrandLogo.vue'
 import type { IconName } from '@/components/ui/icon-names'
+import { useAuthStore } from '@/stores/auth'
 
 // 클릭했을 때 할 일은 AppShell이 정함
 const emit = defineEmits<{ 'attach-click': [] }>()
@@ -31,24 +35,38 @@ const route = useRoute()
 function isActive(item: NavItem) {
   return item.activeOn.includes(route.name?.toString() ?? '')
 }
+
+const authStore = useAuthStore()
+
+// 헤더는 로그인한 화면에서만 나타나므로 여기서 내 정보를 한 번 받아 둠
+// 로그인 화면에서 돌아오면 헤더가 새로 만들어져 다시 받음
+onMounted(async () => {
+  if (authStore.user || !authStore.hasValidToken()) return
+  try {
+    authStore.setUser(await authApi.me())
+  } catch {
+    // 401이면 http.ts가 이미 로그인 화면으로 보냄. 그 밖의 실패는 이메일만 비워 둠
+  }
+})
+
+// 서버의 로그인 세션(Refresh Token)을 지우고 쿠키도 지움. 남은 Access Token은 짧은 수명이 지나면 끝남
+// 화면 이동 대신 페이지를 새로 불러서, 메모리에 남은 이전 사용자의 입력(검사 중이던 문구 등)도 지움
+async function logout() {
+  try {
+    await authApi.logout()
+  } catch {
+    // 서버에 알리지 못해도 이 브라우저에서는 로그아웃함
+  }
+  authStore.clearSession()
+  window.location.assign('/login')
+}
 </script>
 
 <template>
   <header class="flex items-center gap-3 py-6">
-    <!-- 로고: 노란 원 마크 + Fraunces 워드마크 + 한 줄 설명
-         마크는 화면 곳곳의 노란 원(선택 체크, 화살표 버튼)과 같은 모양으로 맞춤
-         'Guard'만 이탤릭으로 바꿔 한 단어 안에서 리듬을 줌 -->
-    <RouterLink :to="{ name: 'inspect' }" class="group flex items-center gap-3 text-ink-900">
-      <span
-        class="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent shadow-sm transition-transform duration-300 group-hover:-rotate-12 motion-reduce:transition-none"
-      >
-        <BaseIcon name="leaf" :size="20" />
-      </span>
-      <span class="font-fraunces text-[1.875rem] leading-none tracking-[-0.02em]">
-        Food<span class="italic">Guard</span>
-      </span>
-      <span aria-hidden="true" class="h-6 w-px bg-ink-900/15" />
-      <span class="text-sm text-ink-600">식품 광고 사전 점검</span>
+    <!-- 로고 모양은 BrandLogo에 있음. 링크의 group 클래스가 마크 회전 효과를 켬 -->
+    <RouterLink :to="{ name: 'inspect' }" class="group">
+      <BrandLogo />
     </RouterLink>
 
     <!-- 메뉴: 반투명 알약 묶음. 가운데 클릭·새 탭 열기가 되도록 버튼이 아닌 링크로 -->
@@ -82,5 +100,19 @@ function isActive(item: NavItem) {
       <BaseIcon name="upload" :size="16" />
       상세페이지 이미지 첨부
     </button>
+
+    <!-- 로그인한 계정과 로그아웃 -->
+    <div class="flex items-center gap-3">
+      <span v-if="authStore.user" class="max-w-56 truncate text-sm text-ink-600">
+        {{ authStore.user.email }}
+      </span>
+      <button
+        type="button"
+        class="rounded-full bg-white/60 px-5 py-3.5 text-sm text-ink-900 transition-colors hover:bg-white"
+        @click="logout"
+      >
+        로그아웃
+      </button>
+    </div>
   </header>
 </template>

@@ -45,11 +45,6 @@ public class AiJudgmentService {
     public record JudgmentOutcome(FastApiResponse response, String status) {
     }
 
-    /** Kept for the existing /api/checks endpoint. */
-    public FastApiResponse requestJudgment(FastApiRequest requestDto) {
-        return requestJudgmentOutcome(requestDto).response();
-    }
-
     public JudgmentOutcome requestJudgmentOutcome(FastApiRequest requestDto) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);

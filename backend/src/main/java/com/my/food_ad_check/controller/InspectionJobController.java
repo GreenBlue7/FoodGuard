@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -53,8 +55,10 @@ public class InspectionJobController {
         this.ruleCheckService = ruleCheckService;
     }
 
+    // SecurityConfig가 로그인을 요구하므로 jwt는 항상 있음, sub에는 회원 id
     @PostMapping
-    public Map<String, String> create(@RequestBody(required = false) InspectionJobRequest request) {
+    public Map<String, String> create(@AuthenticationPrincipal Jwt jwt,
+                                      @RequestBody(required = false) InspectionJobRequest request) {
         if (request == null || request.adText() == null || request.adText().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검수할 광고 문구를 입력해 주세요.");
         }
@@ -126,6 +130,7 @@ public class InspectionJobController {
         result.put("createdAt", judgedAt);
 
         InspectionRecord saved = inspectionRecordRepository.save(new InspectionRecord(
+                Long.valueOf(jwt.getSubject()),
                 product == null ? null : product.getPrdlstReportNo(),
                 product == null ? null : product.getPrdlstNm(),
                 product == null ? null : product.getBsshNm(),
@@ -136,14 +141,15 @@ public class InspectionJobController {
     }
 
     @GetMapping("/{jobId}")
-    public Map<String, Object> get(@PathVariable String jobId) {
+    public Map<String, Object> get(@AuthenticationPrincipal Jwt jwt, @PathVariable String jobId) {
         final long id;
         try {
             id = Long.parseLong(jobId);
         } catch (NumberFormatException e) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "검수 기록을 찾을 수 없습니다.");
         }
-        InspectionRecord record = inspectionRecordRepository.findById(id)
+        // 남의 기록도 "없음"(404)으로 응답해서, 그 번호의 기록이 존재하는지조차 드러나지 않게 한다
+        InspectionRecord record = inspectionRecordRepository.findByIdAndUserId(id, Long.valueOf(jwt.getSubject()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "검수 기록을 찾을 수 없습니다."));
         try {
             Map<String, Object> result = objectMapper.readValue(record.getResultJson(), new TypeReference<>() { });

@@ -19,10 +19,18 @@ import './assets/main.css'
 
 import App from './App.vue'
 import router from './router'
+import { onSessionExpired } from './api/http'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
+
+// 화면을 보던 중 토큰이 거부되면(만료 등) 지금 주소를 기억하고 로그인 화면으로 보냄
+onSessionExpired(() => {
+  const current = router.currentRoute.value
+  if (current.meta.public) return
+  void router.push({ name: 'login', query: { redirect: current.fullPath, expired: '1' } })
+})
 
 app.mount('#app')
