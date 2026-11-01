@@ -14,6 +14,8 @@ Inspection records saved before accounts existed have no owner, so delete them
 first; otherwise the script stops with "column user_id contains null values".
 The script is safe to re-run. Docker applies it automatically only when the
 database volume is created; apply it manually to an existing volume.
+Then apply `db/004_refresh_sessions.sql` the same way; it adds the table of
+login sessions behind refresh tokens.
 
 The existing Docker database was imported before `approvedFunctions` was
 stored. After creating `product_approved_functions`, the one-time backfill can

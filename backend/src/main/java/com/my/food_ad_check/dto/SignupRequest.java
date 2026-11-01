@@ -20,4 +20,10 @@ public record SignupRequest(
         // 선택 입력
         @Size(max = 100, message = "업체명은 100자 이하로 입력해 주세요.")
         String companyName) {
+
+    // 로그·에러 메시지에 객체가 통째로 찍혀도 비밀번호가 남지 않게
+    @Override
+    public String toString() {
+        return "SignupRequest[email=" + email + ", password=****, companyName=" + companyName + "]";
+    }
 }

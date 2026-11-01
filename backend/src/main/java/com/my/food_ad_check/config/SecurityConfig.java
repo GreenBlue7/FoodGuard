@@ -20,12 +20,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                // 세션 쿠키를 아예 발급하지 않으므로 CSRF가 악용할 쿠키가 없다
+                // 일반 API는 쿠키가 아니라 Authorization 헤더로 인증하므로 CSRF 대상이 아니다.
+                // 쿠키를 쓰는 /api/auth/refresh·logout은 SameSite=Strict 쿠키로 다른 사이트의 요청을 막는다
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 기본은 로그인 필요. 로그인 없이 쓸 수 있는 주소만 명시적으로 연다
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
+                        // Access Token이 만료된 상태에서 부르는 API라 토큰 없이 연다. 대신 Refresh Token 쿠키로 확인
+                        .requestMatchers(HttpMethod.POST, "/api/auth/refresh", "/api/auth/logout").permitAll()
                         // 에러 응답(409, 400 등)을 만드는 내부 경로. 막으면 모든 에러가 401로 바뀐다
                         .requestMatchers("/error").permitAll()
                         // 식약처 데이터 적재 등 관리용 API. USER가 호출하면 403

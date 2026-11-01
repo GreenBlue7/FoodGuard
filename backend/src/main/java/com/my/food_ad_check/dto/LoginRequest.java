@@ -11,4 +11,9 @@ public record LoginRequest(
 
         @NotBlank(message = "비밀번호를 입력해 주세요.")
         String password) {
+    // 로그·에러 메시지에 객체가 통째로 찍혀도 비밀번호가 남지 않게
+    @Override
+    public String toString() {
+        return "LoginRequest[email=" + email + ", password=****]";
+    }
 }
