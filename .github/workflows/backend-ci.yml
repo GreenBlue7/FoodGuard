@@ -1,1 +1,50 @@
 name: Backend CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths: # paths필터 --> 프론트만 바꾼 PR에서 백엔드 빌드가 돌지 않도록 하여 시간 절약
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  push:
+    branches: [develop, main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch: # Actions 탭에서 버튼으로 직접 실행할 수 있게 해줌
+
+# 레포에 접근할 수 있는 임시 토큰. 이 CI는 코드를 받아서 빌드만 해서 쓰기 권한 필요 X
+permissions:
+  contents: read
+
+# 브랜치/PR당 실행은 하나만 유지, 이전 실행 취소는 PR에서만
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Compile / Package
+    runs-on: ubuntu-latest
+    # 의존성 첫 다운로드가 있어 프론트보다 조금 넉넉하게
+    timeout-minutes: 15
+    defaults:
+      run:
+        # run 스텝은 모두 backend/ 에서 실행
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # build.gradle의 toolchain(Java 17)과 같은 버전을 설치. 맞춰 두면 Gradle이 JDK를 따로 받지 않음
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # 1. 캐시:  ~/.gradle에 쌓이는 의존성 jar와 Gradle 배포판을 실행이 끝날 때 저장하고, 다음 실행 때 복원    
+      # 2. wrapper검증: 레포에 커밋된 gradle-wrapper.jar의 체크섬을 Gradle 공식 배포본 목록과 비교 
+      - uses: gradle/actions/setup-gradle@v6
+
+      # 컴파일 + 실행 가능한 jar 패키징까지 되는지 검사 (DB 없이 가능)
+      - run: ./gradlew bootJar

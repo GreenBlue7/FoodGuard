@@ -1,1 +1,52 @@
 name: Judge CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths: # paths필터 --> judge를 안 바꾼 PR에서는 무거운 이미지 빌드가 돌지 않도록
+      - "judge/**"
+      - ".github/workflows/judge-ci.yml"
+  push:
+    branches: [develop, main]
+    paths:
+      - "judge/**"
+      - ".github/workflows/judge-ci.yml"
+  workflow_dispatch: # Actions 탭에서 버튼으로 직접 실행할 수 있게 해줌
+
+# 레포에 접근할 수 있는 임시 토큰. 이 CI는 코드를 받아서 빌드만 해서 쓰기 권한 필요 X
+permissions:
+  contents: read
+
+# 브랜치/PR당 실행은 하나만 유지, 이전 실행 취소는 PR에서만
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Docker Build / Import Check
+    runs-on: ubuntu-latest
+    # 첫 실행은 torch 설치 때문에 오래 걸림. 캐시가 생긴 뒤에는 짧아짐
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # BuildKit 빌더 준비. 이미지 레이어를 GitHub Actions 캐시에 저장할 수 있게 해줌
+      - uses: docker/setup-buildx-action@v4
+
+      # docker compose가 쓰는 것과 같은 judge/Dockerfile로 이미지 빌드
+      - uses: docker/build-push-action@v7
+        with:
+          context: judge # Docker에 넘기는 파일 범위
+          load: true # 빌드한 이미지를 러너의 docker에 올려서 다음 스텝에서 실행할 수 있게 함
+          push: false # 레지스트리에는 올리지 않음 (CD에서 할 일)
+          tags: foodguard-judge:ci # 다음 스텝에서 부를 임시 이름
+          cache-from: type=gha,scope=judge 
+          cache-to: type=gha,mode=max,scope=judge # `mode=max` --> 모든 레이어를 전부 캐시에 저장 `scope=judge` --> 캐시에 이름표 붙임
+
+      # 이미지 안에서 앱 코드와 핵심 라이브러리가 import 되는지 확인
+      # API 키·DB 없이 가능: Gemini와 DB 연결은 실제 요청이 올 때 만들어짐
+      # `--rm` --> 실행이 끝나면 컨테이너 삭제 
+      - name: Import check
+        run: docker run --rm foodguard-judge:ci python -c "import app.main, sentence_transformers"
