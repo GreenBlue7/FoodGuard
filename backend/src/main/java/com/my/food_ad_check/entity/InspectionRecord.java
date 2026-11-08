@@ -43,7 +43,8 @@ public class InspectionRecord {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    // 검수를 요청한 회원. 회원이 삭제되면 DB의 ON DELETE CASCADE로 이 기록도 삭제된다
+    // 검수를 요청한 회원
+    // 회원이 삭제되면 DB의 ON DELETE CASCADE로 이 기록도 삭제
     @Column(name = "user_id", nullable = false)
     private Long userId;
 

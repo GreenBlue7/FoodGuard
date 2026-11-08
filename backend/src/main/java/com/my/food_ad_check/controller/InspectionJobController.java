@@ -5,33 +5,30 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.my.food_ad_check.dto.FastApiRequest;
 import com.my.food_ad_check.dto.FastApiResponse;
+import com.my.food_ad_check.dto.InspectionHistoryResponse;
 import com.my.food_ad_check.dto.InspectionJobRequest;
 import com.my.food_ad_check.entity.InspectionRecord;
 import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
-import com.my.food_ad_check.service.AiJudgmentService;
-import com.my.food_ad_check.service.InspectionResultMapper;
-import com.my.food_ad_check.service.ProductApiService;
-import com.my.food_ad_check.service.RuleCheckService;
+import com.my.food_ad_check.service.*;
+
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Synchronous inspection followed by a persisted job lookup. */
+/**
+ * Synchronous inspection followed by a persisted job lookup.
+ */
 @RestController
 @RequestMapping("/api/inspections")
 public class InspectionJobController {
@@ -41,18 +38,21 @@ public class InspectionJobController {
     private final ProductApiService productApiService;
     private final AiJudgmentService aiJudgmentService;
     private final RuleCheckService ruleCheckService;
+    private final InspectionHistoryService inspectionHistoryService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public InspectionJobController(ProductRepository productRepository,
                                    InspectionRecordRepository inspectionRecordRepository,
                                    ProductApiService productApiService,
                                    AiJudgmentService aiJudgmentService,
-                                   RuleCheckService ruleCheckService) {
+                                   RuleCheckService ruleCheckService,
+                                   InspectionHistoryService inspectionHistoryService) {
         this.productRepository = productRepository;
         this.inspectionRecordRepository = inspectionRecordRepository;
         this.productApiService = productApiService;
         this.aiJudgmentService = aiJudgmentService;
         this.ruleCheckService = ruleCheckService;
+        this.inspectionHistoryService = inspectionHistoryService;
     }
 
     // SecurityConfig가 로그인을 요구하므로 jwt는 항상 있음, sub에는 회원 id
@@ -67,7 +67,7 @@ public class InspectionJobController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검사 한 번에 제품 하나만 선택해 주세요.");
         }
         if (request.productTypeAnswer() != null && !List.of(
-                "HEALTH_FUNCTIONAL", "FUNCTIONAL_GENERAL", "GENERAL", "UNKNOWN")
+                        "HEALTH_FUNCTIONAL", "FUNCTIONAL_GENERAL", "GENERAL", "UNKNOWN")
                 .contains(request.productTypeAnswer())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "알 수 없는 제품 유형 답변입니다.");
         }
@@ -77,10 +77,10 @@ public class InspectionJobController {
         String productType = product == null
                 ? ("GENERAL".equals(request.productTypeAnswer()) ? "GENERAL_FOOD" : "UNKNOWN")
                 : switch (product.getProductType()) {
-                    case "건강기능식품" -> "HEALTH_FUNCTIONAL";
-                    case "일반식품" -> "GENERAL_FOOD";
-                    default -> "UNKNOWN";
-                };
+            case "건강기능식품" -> "HEALTH_FUNCTIONAL";
+            case "일반식품" -> "GENERAL_FOOD";
+            default -> "UNKNOWN";
+        };
         String source = product != null ? "MFDS"
                 : "GENERAL_FOOD".equals(productType) ? "USER_DECLARED" : "UNVERIFIED";
         String koreanType = switch (productType) {
@@ -152,7 +152,8 @@ public class InspectionJobController {
         InspectionRecord record = inspectionRecordRepository.findByIdAndUserId(id, Long.valueOf(jwt.getSubject()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "검수 기록을 찾을 수 없습니다."));
         try {
-            Map<String, Object> result = objectMapper.readValue(record.getResultJson(), new TypeReference<>() { });
+            Map<String, Object> result = objectMapper.readValue(record.getResultJson(), new TypeReference<>() {
+            });
             if (!result.containsKey("request") || !result.containsKey("productInfoSource")) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "검수 작업을 찾을 수 없습니다.");
             }
@@ -163,6 +164,18 @@ public class InspectionJobController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "저장된 검수 결과를 읽을 수 없습니다.", e);
         }
+    }
+
+    // @AuthenticationPrincipal --> Spring Security 필터가 이미 서명과 만료 검사완료.
+    // 이 어노테이션은 그 검증이 끝난 토큰 객체를 받아 오는 것
+    @GetMapping
+    public InspectionHistoryResponse history(@AuthenticationPrincipal Jwt jwt,
+                                             @RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "20") int size) {
+
+        String subject = jwt.getSubject();
+        assert subject != null;
+        return inspectionHistoryService.getMyHistory(Long.valueOf(subject), page, size);
     }
 
     private String serialize(Map<String, Object> result) {

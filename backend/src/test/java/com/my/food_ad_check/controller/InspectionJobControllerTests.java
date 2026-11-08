@@ -17,6 +17,7 @@ import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
 import com.my.food_ad_check.service.AiJudgmentService;
+import com.my.food_ad_check.service.InspectionHistoryService;
 import com.my.food_ad_check.service.ProductApiService;
 import com.my.food_ad_check.service.RuleCheckService;
 import java.util.List;
@@ -38,13 +39,14 @@ class InspectionJobControllerTests {
     @Mock private ProductApiService productApiService;
     @Mock private AiJudgmentService aiJudgmentService;
     @Mock private RuleCheckService ruleCheckService;
+    @Mock private InspectionHistoryService inspectionHistoryService;
 
     private InspectionJobController controller;
 
     @BeforeEach
     void setUp() {
         controller = new InspectionJobController(productRepository, inspectionRecordRepository,
-                productApiService, aiJudgmentService, ruleCheckService);
+                productApiService, aiJudgmentService, ruleCheckService, inspectionHistoryService);
     }
 
     @Test
