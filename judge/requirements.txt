@@ -1,8 +1,10 @@
 fastapi
 uvicorn[standard]
-google-genai
+google-genai>=2.28,<3
+httpx>=0.28,<1
 python-dotenv
 sentence-transformers
 psycopg[binary]
 pgvector
 pytest
+EOF
