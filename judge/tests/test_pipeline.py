@@ -34,9 +34,12 @@ def fake(monkeypatch):
     calls = {"prompts": [], "searches": []}
     answers: list[LlmVerdict] = []
 
-    def generate_json(prompt, schema):
+    def generate_json(prompt, schema, model=None):
         calls["prompts"].append(prompt)
-        return LlmOutput(verdicts=list(answers))
+        if schema is LlmOutput:
+            return LlmOutput(verdicts=list(answers))
+        # 위반 확인·재확인·사실 대조 단계: 답이 없으면 1차 판정을 그대로 둔다
+        return schema(items=[])
 
     def search_cases(texts):
         calls["searches"].append(texts)

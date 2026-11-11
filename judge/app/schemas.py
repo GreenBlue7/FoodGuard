@@ -29,6 +29,13 @@ class Product(ApiModel):
     type: ProductType
     names: list[str] = []
     approved_functions: list[str] = []
+    # 아래는 식약처 I0030 에서 그대로 가져오는 값 (없으면 비워 둔다)
+    ingredients: list[str] = []  # 기능성 원료 (RAWMTRL_NM)
+    function_source: str = ""  # 원료별로 적힌 기능성 원문 (PRIMARY_FNCLTY)
+    cautions: list[str] = []  # 섭취 시 주의사항 (IFTKN_ATNT_MATR_CN)
+    intake: str = ""  # 섭취 방법 (NTK_MTHD)
+    other_ingredients: list[str] = []  # 기능성 원료 외 원재료 (INDIV·ETC·CAP_RAWMTRL_NM)
+    standards: str = ""  # 기준규격, 성분별 표시량 (STDR_STND)
 
 class JudgeRequest(ApiModel):
     request_id: str
