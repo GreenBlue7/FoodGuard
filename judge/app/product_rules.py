@@ -12,9 +12,10 @@ PRODUCT_LABEL = {
 }
 
 # 이 단계는 해당 제품 종류일 때만 쓸 수 있다
+# 기능성 표시 일반식품이 허용 문구를 넘는 기능성을 내세우면 일반식품과 같이 건기식 오인으로 본다
 STEP_REQUIRES = {
-    Step.HEALTH_FOOD_CONFUSION: ProductType.GENERAL_FOOD,
-    Step.UNAPPROVED_FUNCTION: ProductType.HEALTH_FUNCTIONAL,
+    Step.HEALTH_FOOD_CONFUSION: {ProductType.GENERAL_FOOD, ProductType.FUNCTIONAL_LABELED_FOOD},
+    Step.UNAPPROVED_FUNCTION: {ProductType.HEALTH_FUNCTIONAL},
 }
 
 _HEALTH_FOOD_CASE = "건강기능식품 오인·혼동"
