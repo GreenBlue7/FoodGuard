@@ -104,3 +104,19 @@ export interface Layer2Result {
   dataAsOf: string | null // 판단 기준일 YYYY-MM-DD. 사례 DB가 비어 있으면 null
   judgedAt: string // ISO 8601 형식
 }
+
+export interface InspectionHistoryPage {
+  items: InspectionHistoryItem[]
+  page: number // 0부터 시작, 화면 번호는 1부터(변환은 composable에서)
+  size: number
+  totalElements: number
+  totalPages: number
+}
+
+export interface InspectionHistoryItem {
+  jobId: string
+  status: JobStatus
+  productName: string | null
+  adTextPreview: string
+  createdAt: string
+}

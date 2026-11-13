@@ -12,9 +12,11 @@ import 'wanted-sans/fonts/webfonts/variable/complete/WantedSansVariable.css'
 // 소제목은 한글이 필요해 500 전체, 큰 숫자(300)는 숫자뿐이라 라틴 범위만 불러옴
 import '@fontsource/ibm-plex-sans-kr/500.css'
 import '@fontsource/ibm-plex-sans-kr/latin-300.css'
-// 로고: Fraunces (굵기·광학 크기 축 + 이탤릭)
+// 로고: Fraunces
 import '@fontsource-variable/fraunces/opsz.css'
 import '@fontsource-variable/fraunces/opsz-italic.css'
+// 날짜·시각: JetBrains Mono (가변 굵기). 숫자 폭이 같아 목록의 시각이 세로로 맞춰짐
+import '@fontsource-variable/jetbrains-mono'
 import './assets/main.css'
 
 import App from './App.vue'
