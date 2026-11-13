@@ -14,4 +14,6 @@ export type IconName =
   | 'refresh'
   | 'eye'
   | 'chevron-down'
+  | 'chevron-left'
+  | 'chevron-right'
   | 'arrow-up-right'

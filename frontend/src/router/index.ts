@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import InspectView from '@/views/InspectView.vue'
 import InspectionResultView from '@/views/InspectionResultView.vue'
 import { refreshSession } from '@/api/http'
@@ -8,34 +8,50 @@ declare module 'vue-router' {
   interface RouteMeta {
     // true: 로그인 없이 들어올 수 있는 화면 (로그인·회원가입). 나머지는 모두 로그인 필요
     public?: boolean
+    title?: string
   }
 }
 
+const routes: RouteRecordRaw[] = [
+  {
+    path: '/',
+    name: 'inspect',
+    component: InspectView,
+    meta: { title: 'Inspection History' },
+  },
+  {
+    path: '/inspections/:jobId',
+    name: 'inspection-result',
+    component: InspectionResultView,
+    meta: { title: 'Inspection Result' },
+    props: true, // jobId를 prop으로 받아 라우터 객체에 덜 의존하게
+  },
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { public: true, title: 'Login' },
+  },
+  {
+    path: '/signup',
+    name: 'signup',
+    component: () => import('@/views/SignupView.vue'),
+    meta: { public: true, title: 'Signup' },
+  },
+  {
+    path: '/history',
+    name: 'history',
+    component: () => import('@/views/InspectionHistoryView.vue'),
+    meta: { title: 'History' },
+  },
+  // 그 외 경로는 모두 첫 화면으로
+  { path: '/:pathMatch(.*)*', redirect: '/' },
+]
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    { path: '/', name: 'inspect', component: InspectView },
-    {
-      path: '/inspections/:jobId',
-      name: 'inspection-result',
-      component: InspectionResultView,
-      props: true, // jobId를 prop으로 받아 라우터 객체에 덜 의존하게
-    },
-    {
-      path: '/login',
-      name: 'login',
-      component: () => import('@/views/LoginView.vue'),
-      meta: { public: true },
-    },
-    {
-      path: '/signup',
-      name: 'signup',
-      component: () => import('@/views/SignupView.vue'),
-      meta: { public: true },
-    },
-    // 그 외 경로는 모두 첫 화면으로
-    { path: '/:pathMatch(.*)*', redirect: '/' },
-  ],
+  routes,
+  //scrollBehavior
 })
 
 // 화면 이동 전에 로그인 여부를 확인

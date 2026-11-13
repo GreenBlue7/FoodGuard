@@ -8,7 +8,9 @@ import type { IconName } from '@/components/ui/icon-names'
 import { useAuthStore } from '@/stores/auth'
 
 // 클릭했을 때 할 일은 AppShell이 정함
-const emit = defineEmits<{ 'attach-click': [] }>()
+const emit = defineEmits<{
+  'attach-click': []
+}>()
 
 // 이미지 업로드는 기말 범위라 중간 발표에서는 버튼을 숨김. 기능을 붙일 때 true로 변경
 const SHOW_IMAGE_ATTACH = false
@@ -28,13 +30,15 @@ const items: NavItem[] = [
     icon: 'shield',
     activeOn: ['inspect', 'inspection-result'],
   },
+  {
+    to: 'history',
+    label: '검수 이력 조회',
+    icon: 'clock',
+    activeOn: ['history'],
+  },
 ]
 
 const route = useRoute()
-
-function isActive(item: NavItem) {
-  return item.activeOn.includes(route.name?.toString() ?? '')
-}
 
 const authStore = useAuthStore()
 
@@ -48,6 +52,10 @@ onMounted(async () => {
     // 401이면 http.ts가 이미 로그인 화면으로 보냄. 그 밖의 실패는 이메일만 비워 둠
   }
 })
+
+function isActive(item: NavItem) {
+  return item.activeOn.includes(route.name?.toString() ?? '')
+}
 
 // 서버의 로그인 세션(Refresh Token)을 지우고 쿠키도 지움. 남은 Access Token은 짧은 수명이 지나면 끝남
 // 화면 이동 대신 페이지를 새로 불러서, 메모리에 남은 이전 사용자의 입력(검사 중이던 문구 등)도 지움

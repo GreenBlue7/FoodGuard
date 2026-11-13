@@ -95,6 +95,14 @@ defineProps<{
       <polyline points="6 9 12 15 18 9" />
     </template>
 
+    <template v-else-if="name === 'chevron-left'">
+      <polyline points="15 6 9 12 15 18" />
+    </template>
+
+    <template v-else-if="name === 'chevron-right'">
+      <polyline points="9 6 15 12 9 18" />
+    </template>
+
     <template v-else-if="name === 'arrow-up-right'">
       <line x1="7" y1="17" x2="17" y2="7" />
       <polyline points="7 7 17 7 17 17" />
