@@ -48,6 +48,15 @@ public class InspectionRecord {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Column(name = "previous_inspection_id")
+    private Long previousInspectionId;
+
+    public Long getPreviousInspectionId() { return previousInspectionId; }
+
+    public void linkToPreviousInspection(Long previousInspectionId) {
+        this.previousInspectionId = previousInspectionId;
+    }
+
     protected InspectionRecord() {
     }
 

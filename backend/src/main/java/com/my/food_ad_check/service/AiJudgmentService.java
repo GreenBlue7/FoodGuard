@@ -29,7 +29,7 @@ public class AiJudgmentService {
 
     @Autowired
     public AiJudgmentService(@Value("${judge.url:http://localhost:8000/judge}") String judgeUrl,
-                             @Value("${judge.timeout-ms:30000}") int timeoutMs) {
+                             @Value("${judge.timeout-ms:180000}") int timeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofMillis(timeoutMs));
         factory.setReadTimeout(Duration.ofMillis(timeoutMs));

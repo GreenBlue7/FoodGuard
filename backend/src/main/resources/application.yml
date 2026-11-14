@@ -4,6 +4,19 @@ spring:
     # 실제 환경변수가 있으면 파일 값보다 우선한다.
     import: optional:file:../.env[.properties]
 
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": ${MAIL_SMTP_AUTH:false}
+      "[mail.smtp.starttls.enable]": ${MAIL_STARTTLS:false}
+      "[mail.smtp.starttls.required]": ${MAIL_STARTTLS:false}
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 5000
+      "[mail.smtp.writetimeout]": 5000
+
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/foodguard}
     username: ${DB_USERNAME:postgres}
@@ -24,10 +37,12 @@ foodsafety:
   api-base-url: ${FOOD_SAFETY_API_BASE_URL:http://openapi.foodsafetykorea.go.kr/api}
   timeout-ms: ${FOOD_SAFETY_TIMEOUT_MS:30000}
   import-enabled: ${FOOD_SAFETY_IMPORT_ENABLED:false}
+  scheduled-refresh-enabled: ${FOOD_SAFETY_SCHEDULED_REFRESH_ENABLED:false}
+  refresh-cron: ${FOOD_SAFETY_REFRESH_CRON:0 0 3 * * *}
 
 judge:
   url: ${JUDGE_URL:http://localhost:8000/judge}
-  timeout-ms: ${JUDGE_TIMEOUT_MS:30000}
+  timeout-ms: ${JUDGE_TIMEOUT_MS:180000}
 
 jwt:
   # 최소 32바이트 무작위 값의 Base64. 생성: openssl rand -base64 32
@@ -37,3 +52,10 @@ jwt:
   refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:14d}
   # Refresh Token 쿠키를 HTTPS에서만 보냄. http://localhost 개발은 브라우저가 예외로 허용함
   refresh-cookie-secure: ${JWT_REFRESH_COOKIE_SECURE:true}
+
+notification-email:
+  delivery-enabled: ${NOTIFICATION_EMAIL_ENABLED:false}
+  from: ${NOTIFICATION_EMAIL_FROM:foodguard@localhost}
+  public-api-url: ${NOTIFICATION_EMAIL_PUBLIC_API_URL:http://localhost:8080}
+  public-web-url: ${NOTIFICATION_EMAIL_PUBLIC_WEB_URL:http://127.0.0.1:5173}
+  poll-ms: ${NOTIFICATION_EMAIL_POLL_MS:60000}

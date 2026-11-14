@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FoodGuard 알림</title>
+<style nonce="__NONCE__">
+:root{color-scheme:light dark;font:16px/1.6 system-ui,sans-serif}body{max-width:760px;margin:40px auto;padding:0 20px}h1{font-size:1.7rem}h2{font-size:1.2rem}section{margin:24px 0}label{display:block;margin:12px 0}input:not([type=checkbox]),textarea{box-sizing:border-box;width:100%;padding:10px;font:inherit}textarea{min-height:150px}button{padding:10px 16px;font:inherit;margin:5px 8px 5px 0;cursor:pointer}button:disabled{cursor:default}pre{white-space:pre-wrap;overflow-wrap:anywhere}#message{white-space:pre-wrap}small{display:block}article{padding:12px 0;border-top:1px solid GrayText}[hidden]{display:none!important}
+</style></head>
+<body>
+<p>FoodGuard</p><h1 id="heading">이메일 알림</h1>
+<p id="message" role="status" aria-live="polite">본인 계정으로 로그인해 주세요.</p>
+<form id="login"><label>이메일<input id="email" type="email" autocomplete="username" required></label>
+<label>비밀번호<input id="password" type="password" autocomplete="current-password" required></label><button>로그인</button></form>
+<section id="settings" hidden><h2>이메일 수신 설정</h2><p id="settings-summary"></p>
+<button id="verify-request">주소 확인 메일 받기</button><button id="reload">확인 상태 새로고침</button>
+<button id="opt-in">이메일 알림 켜기</button><button id="opt-out">이메일 알림 끄기</button>
+<small>주소 확인과 수신 동의 후 새로 발견한 제품 기능성 변경만 안내합니다. 과거 알림을 다시 보내지는 않습니다.</small></section>
+<section id="context" hidden><h2 id="product"></h2><p id="context-note"></p>
+<details><summary>기능성 정보 확인</summary><h3>알림 당시 원문</h3><pre id="notified-source"></pre><h3>현재 원문</h3><pre id="current-source"></pre></details>
+<label>현재 광고 문구<textarea id="ad"></textarea></label>
+<label><input id="confirmed" type="checkbox"> 위 문구가 현재 사용 중인 광고임을 확인했습니다.</label>
+<button id="recheck" disabled>현재 광고 재검수</button><small>이 버튼을 눌러야 AI 검수가 실행됩니다. 메일을 열기만 하면 검사는 실행되지 않습니다.</small>
+</section>
+<section id="result" hidden><h2>재검수 결과</h2><p id="result-status"></p><div id="findings"></div></section>
+<button id="logout" hidden>로그아웃</button>
+<script nonce="__NONCE__">
+(()=>{
+const notificationId=__NOTIFICATION_ID__;
+let token=null,context=null,busy=false;
+const el=id=>document.getElementById(id);
+el('heading').textContent=notificationId===null?'이메일 알림 설정':'제품 정보 변경 확인';
+const say=text=>{el('message').textContent=text;};
+async function api(path,method='GET',body){
+ const headers={'Accept':'application/json'};if(token)headers.Authorization='Bearer '+token;if(body!==undefined)headers['Content-Type']='application/json';
+ const response=await fetch(path,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});
+ const type=response.headers.get('content-type')||'';const data=type.includes('json')?await response.json():null;
+ if(!response.ok){if(response.status===401){token=null;el('login').hidden=false;el('settings').hidden=true;el('context').hidden=true;el('result').hidden=true;el('logout').hidden=true;}
+ throw Error(data?.detail||data?.message||('요청을 완료하지 못했습니다 ('+response.status+')'));}return data;
+}
+async function settings(){const value=await api('/api/notification-email');
+ el('settings-summary').textContent=value.email+' · 주소 '+(value.verified?'확인 완료':'미확인')+' · 알림 '+(value.enabled?'켜짐':'꺼짐');
+ el('verify-request').disabled=value.verified;el('opt-in').disabled=!value.verified||value.enabled;el('opt-out').disabled=!value.enabled;el('settings').hidden=false;}
+async function loadContext(){context=await api('/api/notifications/'+notificationId+'/ad-context');
+ el('product').textContent=context.productName||'제품 정보 확인';el('context-note').textContent=context.message;
+ el('notified-source').textContent=context.notifiedSource||'정보 없음';el('current-source').textContent=context.currentSource||'정보 없음';
+ el('ad').value=context.savedAdText||'';el('context').hidden=false;updateButton();}
+function updateButton(){el('recheck').disabled=busy||!context?.canRecheck||!el('confirmed').checked||!el('ad').value.trim();}
+el('login').addEventListener('submit',async event=>{event.preventDefault();const button=el('login').querySelector('button');button.disabled=true;
+ try{const value=await api('/api/auth/login','POST',{email:el('email').value,password:el('password').value});token=value.accessToken;el('password').value='';el('login').hidden=true;el('logout').hidden=false;
+ await settings();if(notificationId!==null)await loadContext();say('로그인했습니다. 메일을 열거나 로그인한 것만으로 재검수는 실행되지 않습니다.');}
+ catch(error){say(error.message);}finally{button.disabled=false;}});
+el('verify-request').addEventListener('click',async()=>{el('verify-request').disabled=true;try{await api('/api/notification-email/verification','POST');say('확인 메일을 보냈습니다. 메일에서 주소 확인 후 이 페이지의 확인 상태를 새로고침해 주세요.');}catch(error){say(error.message);}finally{await settings().catch(()=>{});}});
+el('reload').addEventListener('click',()=>settings().catch(error=>say(error.message)));
+for(const [id,enabled] of [['opt-in',true],['opt-out',false]])el(id).addEventListener('click',async()=>{el(id).disabled=true;try{await api('/api/notification-email','PUT',{enabled});await settings();say(enabled?'이후 발견하는 제품 변경을 이메일로 알려드립니다.':'이메일 알림을 껐습니다. 웹 알림은 유지됩니다.');}catch(error){say(error.message);await settings().catch(()=>{});}});
+el('confirmed').addEventListener('change',updateButton);el('ad').addEventListener('input',()=>{el('confirmed').checked=false;updateButton();});
+el('recheck').addEventListener('click',async()=>{busy=true;updateButton();say('광고를 재검수하고 있습니다. 최대 약 3분 걸릴 수 있습니다.');
+ try{const job=await api('/api/inspections/'+encodeURIComponent(context.previousJobId)+'/recheck','POST',{adText:el('ad').value,confirmedCurrentAd:true});
+ const result=await api('/api/inspections/'+encodeURIComponent(job.jobId));el('result').hidden=false;el('result-status').textContent='검사 상태: '+result.status;el('findings').replaceChildren();
+ for(const finding of result.layer2?.findings||[]){const article=document.createElement('article');const title=document.createElement('strong');title.textContent=({VIOLATION:'위반',REVIEW:'검토 필요',OK:'문제없음'})[finding.verdict]||finding.verdict;
+ const reason=document.createElement('p');reason.textContent=finding.reason||'';article.append(title,reason);if(finding.revision){const revision=document.createElement('p');revision.textContent='수정 예시: '+finding.revision;article.append(revision);}el('findings').append(article);}
+ say(result.status==='DONE'?'재검수가 완료됐습니다.':'검사를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.');}
+ catch(error){say(error.message);}finally{busy=false;updateButton();}});
+el('logout').addEventListener('click',async()=>{try{await api('/api/auth/logout','POST');}catch{}token=null;context=null;el('login').hidden=false;for(const id of ['settings','context','result','logout'])el(id).hidden=true;say('로그아웃했습니다.');});
+})();
+</script></body></html>

@@ -34,13 +34,12 @@ class InspectionFlowControllerTests {
     @Mock private RuleCheckService ruleCheckService;
 
     private ProductController productController;
-    private InspectionController inspectionController;
+
 
     @BeforeEach
     void setUp() {
         productController = new ProductController(productRepository, productApiService);
-        inspectionController = new InspectionController(productRepository, inspectionRecordRepository,
-                productApiService, aiJudgmentService, ruleCheckService);
+
     }
 
     @Test
@@ -64,30 +63,6 @@ class InspectionFlowControllerTests {
         var results = productController.search("홍삼");
 
         assertEquals("홍삼정 골드", results.get(0).prdlstNm());
-    }
-
-    @Test
-    void unknownProductTypeIsSavedAsReviewAndSkipsAiJudgment() {
-        when(inspectionRecordRepository.save(any(InspectionRecord.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
-
-        Map<String, Object> result = inspectionController.processInspection(
-                new InspectionRequest(null, "미등록 제품", null, null, null, "건강에 좋습니다."));
-
-        assertEquals("REVIEW_REQUIRED", result.get("status"));
-        assertEquals("REVIEW", ((Map<?, ?>) result.get("step1")).get("status"));
-        assertEquals("SKIPPED", ((Map<?, ?>) result.get("step2")).get("status"));
-        assertEquals("UNCONFIRMED", ((Map<?, ?>) result.get("productInfo")).get("source"));
-        verify(inspectionRecordRepository).save(any(InspectionRecord.class));
-        verify(aiJudgmentService, never()).requestJudgment(any());
-    }
-
-    @Test
-    void blankAdTextIsRejectedBeforeCallingServices() {
-        var exception = assertThrows(org.springframework.web.server.ResponseStatusException.class,
-                () -> inspectionController.processInspection(
-                        new InspectionRequest(null, null, null, null, null, "  ")));
-        assertEquals(400, exception.getStatusCode().value());
     }
 
     private static Product product(String reportNo, String name) {

@@ -4,7 +4,7 @@ import { NotFoundError } from '@/api/errors'
 import type { InspectionJob, JobStatus } from '@/types/inspection'
 
 const POLL_INTERVAL_MS = 1000
-const TIMEOUT_MS = 60_000
+const TIMEOUT_MS = 180_000
 
 // loading: 첫 응답 전 / ready: job 있음 / not-found: 없는 작업 / error: 그 밖의 조회 실패
 type JobLoadState = 'loading' | 'ready' | 'not-found' | 'error'
@@ -14,7 +14,7 @@ export function isInProgress(status: JobStatus): boolean {
 }
 
 // jobId로 작업을 불러오고, 끝날 때까지 1초마다 다시 조회
-// 폴링을 시작한 뒤 60초가 지나도 끝나지 않으면 timedOut을 켜고 멈춘다
+// 폴링을 시작한 뒤 3분이 지나도 끝나지 않으면 timedOut을 켜고 멈춘다
 // 이 시간 초과는 프론트가 기다리기를 그만둔 것일 뿐이라 서버의 TIMEOUT 상태와는 구분
 export function useInspectionJob(jobId: MaybeRefOrGetter<string>) {
   const job = ref<InspectionJob | null>(null)
@@ -75,7 +75,7 @@ export function useInspectionJob(jobId: MaybeRefOrGetter<string>) {
   onScopeDispose(() => stopPolling())
 
   // 프론트 시간 초과 뒤 같은 jobId로 다시 조회
-  // 새 작업은 만들지 않고 60초를 새로 잰다.
+  // 새 작업은 만들지 않고 3분을 새로 잰다.
   function recheck() {
     startPolling(toValue(jobId))
   }

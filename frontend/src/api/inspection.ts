@@ -24,6 +24,7 @@ export interface InspectionApi {
   getJob(jobId: string): Promise<InspectionJob>
   // page는 0부터, 백엔드에서 음수는 0, size는 1-50으로 보정
   getHistory(page: number, size: number): Promise<InspectionHistoryPage>
+  getReport(jobId: string): Promise<string>
 }
 
 export const inspectionApi: InspectionApi = {
@@ -39,5 +40,8 @@ export const inspectionApi: InspectionApi = {
   getHistory(page, size) {
     const query = new URLSearchParams({ page: String(page), size: String(size) })
     return request<InspectionHistoryPage>(`${ENDPOINTS.inspections}?${query}`)
+  },
+  getReport(jobId) {
+    return request<string>(`${ENDPOINTS.inspection(jobId)}/report`, { responseType: 'html' })
   },
 }

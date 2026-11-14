@@ -95,12 +95,18 @@ An import error returns HTTP 502 and reports how many records were saved before
 the failure. Concurrent imports within one backend process return HTTP 409.
 This operation is not atomic across all API pages; coordination across multiple
 backend processes has not been implemented.
-On a repeat import, existing products keep their saved `approvedFunctions`;
-only newly inserted products get an automatically parsed list. Product name,
-manufacturer, type, and the raw `primaryFnclty` source are refreshed. The
-completion message and server log count products whose raw functionality text
-changed, because their preserved list may need manual review. Stop other
-writers before a full import; cross-process edits are not coordinated.
+On a repeat import, changed functionality source text automatically regenerates
+`approvedFunctions`. Extraction failures clear the obsolete list and set
+`function_source_review_required`; those products cannot be judged or recommended
+until extraction succeeds. This is an automatic failure flag, not a mandatory
+administrator approval workflow. Unchanged data is not rewritten. Product names,
+manufacturers and types are refreshed when different. Product versions prevent
+concurrent imports from silently overwriting newer data.
+
+Apply `db/005_product_changes_reinspections.sql`, `db/006_product_sync_state.sql`
+and `db/007_product_version.sql` after the existing schema. See
+`PRODUCT_CHANGE_REINSPECTION.md` for incremental refresh, notification context,
+current-ad rechecking and on-demand validation of selected sentence revisions.
 
 ## Current Vue integration endpoints
 

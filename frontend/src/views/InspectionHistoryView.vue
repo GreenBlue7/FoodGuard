@@ -74,13 +74,26 @@ function formatCreatedAt(value: string): string {
         <!-- 링크로 만들어 ⌘+클릭으로 새 탭에서 결과를 열 수 있게 함 -->
         <RouterLink
           :to="{ name: 'inspection-result', params: { jobId: item.jobId } }"
-          class="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-white/60"
+          class="flex flex-wrap items-center gap-4 px-6 py-4 transition-colors hover:bg-white/60"
         >
           <JobStatusBadge :status="item.status" />
           <div class="flex min-w-0 flex-1 flex-col gap-0.5">
             <p class="truncate text-ink-900">{{ item.adTextPreview }}</p>
             <p class="truncate text-sm text-ink-600">
               {{ item.productName ?? '제품 선택 없이 검사' }}
+            </p>
+            <p class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-700">
+              <template v-if="item.countsAvailable">
+                <span :class="{ 'font-medium text-red-700': (item.violationCount ?? 0) > 0 }">
+                  위반 {{ item.violationCount }}건
+                </span>
+                <span :class="{ 'font-medium text-orange-700': (item.reviewCount ?? 0) > 0 }">
+                  검토 필요 {{ item.reviewCount }}건
+                </span>
+              </template>
+              <span v-else>판정 건수 집계 불가</span>
+              <span>자료 기준일 {{ item.dataAsOf ?? '정보 없음' }}</span>
+              <span v-if="item.previousJobId">이전 검사 #{{ item.previousJobId }}에서 이어짐</span>
             </p>
           </div>
           <span class="shrink-0 font-mono text-sm text-ink-600">

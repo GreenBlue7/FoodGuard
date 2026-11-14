@@ -1,5 +1,21 @@
 # Approved-function extraction review (2026-10-12)
 
+## Current import policy (2026-11-12)
+
+The parser now separates clear ingredient/section headings and labelled English
+translations from Korean claim text, including inline and wrapped language labels.
+The import gate no longer requires a narrow keyword set: short source claims such
+as `배변활동 원활` and `식이섬유 보충` are retained. Bracketed manufacturing
+conditions are protected from sentence/list splitting and are not silently erased.
+These changes do not migrate existing stored lists automatically.
+
+The dated checks below describe the earlier parser and preservation policy.
+Current imports automatically re-extract functions when the source changes.
+On extraction failure, they clear the stale list and block inspection for that
+product; successful extraction automatically releases the block. There is no
+routine administrator approval step. Source text remains available for tracing.
+`PRODUCT_CHANGE_REINSPECTION.md` describes the current behavior and limitations.
+
 The I0030 `PRIMARY_FNCLTY` field is free text. The backend stores its original
 text in `products.primary_fnclty` and a heuristic list in
 `product_approved_functions`. The list is not an independently verified set of

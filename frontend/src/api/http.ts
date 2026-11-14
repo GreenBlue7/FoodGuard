@@ -8,6 +8,7 @@ interface RequestOptions {
   // false: 로그인·회원가입·갱신처럼 Access Token 없이 보내는 요청. 401이 와도 세션 만료로 보지 않음
   auth?: boolean
   retried?: boolean // 내부용: 갱신 후 다시 보낸 요청이면 true (한 번만 재시도)
+  responseType?: 'json' | 'html'
 }
 
 // 세션이 만료됐을 때 할 일 (로그인 화면으로 이동 등)
@@ -59,9 +60,17 @@ function expireSession(method: string, path: string): never {
 // 그 밖의 2xx가 아닌 응답, 네트워크 오류, JSON이 아닌 응답 → ApiError
 export async function request<T>(
   path: string,
-  { method = 'GET', body, auth = true, retried = false }: RequestOptions = {},
+  {
+    method = 'GET',
+    body,
+    auth = true,
+    retried = false,
+    responseType = 'json',
+  }: RequestOptions = {},
 ): Promise<T> {
-  const headers = new Headers({ Accept: 'application/json' })
+  const headers = new Headers({
+    Accept: responseType === 'html' ? 'text/html' : 'application/json',
+  })
   if (body !== undefined) headers.set('Content-Type', 'application/json')
 
   // 요청 전에 판단해 둠: 401이 왔을 때 "로그인 상태였는가"로 세션 만료 여부를 가름
@@ -88,7 +97,7 @@ export async function request<T>(
   if (response.status === 401 && hadSession) {
     // 서버가 토큰을 거부함 (만료 직후, 비밀키 변경 등). 한 번만 갱신해서 다시 보냄
     if (!retried && (await refreshSession())) {
-      return request<T>(path, { method, body, auth, retried: true })
+      return request<T>(path, { method, body, auth, retried: true, responseType })
     }
     return expireSession(method, path)
   }
@@ -104,6 +113,12 @@ export async function request<T>(
 
   // 백엔드 대신 HTML 오류 페이지 등이 돌아온 경우를 걸러냄
   const contentType = response.headers.get('Content-Type') ?? ''
+  if (responseType === 'html') {
+    if (!contentType.includes('text/html')) {
+      throw new ApiError(`HTML 리포트가 아닌 응답입니다: ${method} ${path}`, response.status)
+    }
+    return (await response.text()) as T
+  }
   if (!contentType.includes('application/json')) {
     throw new ApiError(
       `JSON이 아닌 응답입니다 (${contentType || '형식 없음'}): ${method} ${path}`,

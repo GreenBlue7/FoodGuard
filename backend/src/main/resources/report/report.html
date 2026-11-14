@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-__NONCE__'; script-src 'nonce-__NONCE__'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer"><title>FoodGuard 검수 리포트 #__REPORT_ID__</title>
+<style nonce="__NONCE__">
+:root{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;color:#242d35;background:#e9e9e7;font-size:14px;line-height:1.8}
+*{box-sizing:border-box}body{margin:0}p{margin:6px 0}a{color:inherit;text-underline-offset:3px}
+.toolbar{max-width:980px;margin:20px auto 12px;padding:0 12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.toolbar button{font:inherit;font-size:12px;font-weight:700;color:#fff;background:#303840;border:1px solid #303840;border-radius:0;padding:8px 16px;cursor:pointer}.toolbar p{font-size:11px;color:#676e74;margin:0}
+main{max-width:980px;margin:0 auto 48px;padding:44px 48px 36px;background:white;border:1px solid #d1d4d5;overflow-wrap:anywhere;counter-reset:report-section}
+.demo{font-size:11px;color:#4b545b;background:#f3f4f2;border:1px solid #cdd1ce;padding:7px 10px;margin-bottom:22px}
+header{padding-bottom:22px;border-bottom:2px solid #26323c;margin-bottom:20px}.document-line{display:flex;justify-content:space-between;gap:16px;align-items:baseline}
+.brand{font-size:15px;font-weight:700;letter-spacing:-.02em}.document-no{font-family:Consolas,'Malgun Gothic',monospace;font-size:11px;color:#68727a}
+h1{font-size:26px;line-height:1.5;letter-spacing:-.045em;font-weight:700;margin:25px 0 6px}.subtitle{font-size:12px;color:#747b81;margin:0}
+table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{overflow-wrap:anywhere;word-break:normal;text-align:left;vertical-align:top}
+.identity{font-size:12px;border-top:1px solid #8c9499}.identity-key{width:12%}.identity th,.identity td{padding:9px 11px;border-bottom:1px solid #d6dbde}
+.identity th{font-weight:400;color:#647079;background:#f5f6f5}.identity td{color:#303b43}.identity td:nth-child(2){border-right:1px solid #d6dbde}
+section{margin:26px 0}h2{font-size:15px;font-weight:700;border-bottom:1px solid #4d5b65;padding-bottom:9px;margin:0 0 14px;letter-spacing:-.025em}
+section>h2:before{counter-increment:report-section;content:counter(report-section) ".";font-family:Arial,sans-serif;font-size:14px;margin-right:9px;color:#394750}
+.summary-line{font-size:14px;line-height:2.1}.summary-line strong{font-weight:700}.violation{color:#8b2d30}.review{color:#7a5b26}.ok{color:#53635b}
+.action-line{font-size:12px;line-height:1.85;color:#52606b;border-left:2px solid #7c8992;padding-left:11px;margin-top:10px}
+.caption,.table-note{font-size:11px;line-height:1.8;color:#727c84;margin:7px 0}.table-note{margin-top:-5px;margin-bottom:11px}
+.number-col{width:6%}.quote-col{width:27%}.verdict-col{width:13%}
+.findings{font-size:12px;border-top:1.5px solid #5a6670}.findings thead th{padding:10px 10px;background:#f0f2f3;border-bottom:1px solid #b2bbc2;font-size:12px;font-weight:700;color:#35434d}
+.findings th+th,.findings td+td{border-left:1px solid #e0e4e7}.findings td{padding:15px 11px;border-bottom:1px solid #bac3ca;color:#37444e;line-height:1.9}
+.findings .row-number{font-family:Consolas,monospace;font-size:12px;text-align:center;color:#6d7880;padding-left:5px;padding-right:5px}
+.findings .quote{font-size:13px;font-weight:700;white-space:pre-wrap;color:#25323c}
+.findings .verdict{font-size:12px;white-space:normal}.findings .verdict strong{font-weight:700}.finding.violation .row-number{border-left:2px solid #9d5352}.finding.review .row-number{border-left:2px solid #b49b71}
+.opinion-text,.preserve{white-space:pre-wrap}.opinion p{margin:0}.opinion h3{font-size:11px;font-weight:700;line-height:1.7;margin:0 0 3px;color:#596872}
+.evidence-block{font-size:11px;margin-top:13px}.evidence-block p{line-height:1.8}.evidence-block ul{padding-left:16px;margin:3px 0}
+.revision{margin-top:14px;padding-top:10px;border-top:1px dotted #c5cdd3;font-size:11px}.revision .caption{font-size:10px;margin-top:6px}
+.warning{border-left:2px solid #a47165;padding:8px 0 8px 11px;font-size:12px;color:#813b34;margin:14px 0}
+.original{font-size:12px;white-space:pre-wrap;line-height:2;background:#fafbf9;border:1px solid #dbe0de;padding:15px 17px}
+.table-wrap table{font-size:12px;border-top:1px solid #74828c}.table-wrap th,.table-wrap td{border-bottom:1px solid #cfd6db;padding:10px 9px;white-space:pre-wrap}.table-wrap th{font-size:11px;background:#f4f5f5}.table-wrap th:first-child{width:25%}.comparison-summary{font-size:13px;font-weight:700}
+.notice{font-size:10px;line-height:1.8;color:#737c83;border-top:1px solid #dce0e3;padding-top:12px;margin-top:28px}
+footer{display:flex;justify-content:space-between;gap:25px;font-size:10px;color:#7a8289;border-top:1px solid #596871;padding-top:12px;margin-top:18px;line-height:1.8}footer p{margin:0}footer p:first-child{flex:0 0 165px}
+thead{display:table-header-group}header,h2,.summary-line{break-after:avoid-page}.identity{break-inside:avoid-page}.findings tr{break-inside:avoid-page}
+@media screen and (max-width:640px){main{padding:24px 18px;margin-bottom:0;border-left:0;border-right:0}.toolbar{padding:0 15px}.document-line{flex-wrap:wrap;gap:4px}.document-no{font-size:10px}h1{font-size:23px;margin-top:20px}.identity,.identity tbody,.identity tr{display:block}.identity tr{display:grid;grid-template-columns:85px minmax(0,1fr)}.identity th,.identity td{display:block;border-right:0!important}.identity th{font-size:11px}.identity td{font-size:12px}.findings,.findings tbody{display:block}.findings colgroup{display:none}.findings thead{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden}.findings tr{display:block;border:1px solid #c4cdd3;margin:14px 0}.findings td{display:grid;grid-template-columns:68px minmax(0,1fr);gap:9px;border-left:0;border-bottom:1px solid #e1e5e8;padding:10px 11px!important}.findings td:before{content:attr(data-label);font-size:10px;font-weight:400;color:#78838b;white-space:normal}.findings .row-number{text-align:left;border-left:0!important}.findings .quote{font-size:13px}.findings .opinion{display:block}.findings .opinion:before{display:block;margin-bottom:5px}.findings tr.violation{border-top:2px solid #9d5352}.findings tr.review{border-top:2px solid #b49b71}.findings tr td:last-child{border-bottom:0}footer{display:block}footer p+p{margin-top:7px}}
+@page{size:A4;margin:15mm 13mm}
+@media print{:root{background:white;font-size:10pt}main{max-width:none;margin:0;padding:0;border:0}.toolbar{display:none}header{padding-bottom:16px;margin-bottom:16px}h1{font-size:21pt;margin-top:18px}.brand{font-size:11pt}.document-no,.subtitle,.demo{font-size:8pt}.identity{font-size:8.5pt}.identity th,.identity td{padding:7px 8px}section{margin:20px 0}h2{font-size:11pt}.summary-line{font-size:10pt}.action-line{font-size:9pt}.caption,.table-note,.notice{font-size:8pt}.findings{font-size:9pt}.findings thead th{font-size:8.5pt;padding:8px}.findings td{padding:11px 8px;line-height:1.85}.findings .quote{font-size:9.5pt}.findings .verdict,.findings .row-number{font-size:8.5pt}.opinion h3,.evidence-block,.revision{font-size:8pt}.revision .caption{font-size:7.5pt}.original,.table-wrap table{font-size:9pt}footer{font-size:7.5pt}.demo,.identity th,.findings th,.warning{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+
+</style></head><body>
+<div class="toolbar"><button id="print" type="button">인쇄 · PDF로 저장</button><p>인쇄 창에서 ‘PDF로 저장’을 선택할 수 있습니다.</p></div>
+<main>__CONTENT__</main>
+<script nonce="__NONCE__">document.getElementById('print').addEventListener('click',()=>window.print());
+document.querySelectorAll('a[href^="#"]') .forEach(link=>link.addEventListener('click',event=>{event.preventDefault();const target=document.getElementById(link.getAttribute('href').slice(1));if(target)target.scrollIntoView({block:'start'});}));</script>
+</body></html>

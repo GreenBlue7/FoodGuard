@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { inspectionApi } from '@/api/inspection'
 import JobStatusBadge from '@/components/result/JobStatusBadge.vue'
 import Layer1Panel from '@/components/result/Layer1Panel.vue'
@@ -105,7 +105,16 @@ async function retry() {
 
 <template>
   <div class="flex flex-col gap-8">
-    <h1 class="text-5xl tracking-tight text-ink-900">검사 결과</h1>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <h1 class="text-5xl tracking-tight text-ink-900">검사 결과</h1>
+      <RouterLink
+        v-if="status === 'DONE'"
+        :to="{ name: 'inspection-report', params: { jobId: props.jobId } }"
+        class="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm text-ink-900 transition-colors hover:border-black/20"
+      >
+        검수 리포트 보기
+      </RouterLink>
+    </div>
 
     <!-- 요약 카드 + 필수 문구 확인(차콜 카드). 두 카드 높이를 맞춤 -->
     <div class="grid grid-cols-3 gap-5">

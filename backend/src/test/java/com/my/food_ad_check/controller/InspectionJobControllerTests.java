@@ -57,7 +57,7 @@ class InspectionJobControllerTests {
         when(saved.getId()).thenReturn(42L);
         when(inspectionRecordRepository.save(any())).thenReturn(saved);
 
-        Map<String, String> created = controller.create(
+        Map<String, String> created = controller.create(jwt(),
                 new InspectionJobRequest(List.of("missing"), "UNKNOWN", "광고 문구"));
 
         assertEquals("42", created.get("jobId"));
@@ -66,9 +66,9 @@ class InspectionJobControllerTests {
         assertEquals("UNKNOWN", judgeRequest.getValue().product().type());
         ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
         verify(inspectionRecordRepository).save(record.capture());
-        when(inspectionRecordRepository.findById(42L)).thenReturn(Optional.of(record.getValue()));
+        when(inspectionRecordRepository.findByIdAndUserId(42L, 9L)).thenReturn(Optional.of(record.getValue()));
 
-        Map<String, Object> loaded = controller.get("42");
+        Map<String, Object> loaded = controller.get(jwt(), "42");
         assertEquals("DONE", loaded.get("status"));
         assertEquals("UNVERIFIED", loaded.get("productInfoSource"));
         assertNotNull(loaded.get("layer2"));
@@ -83,7 +83,7 @@ class InspectionJobControllerTests {
         InspectionRecord saved = savedRecord(1L);
         when(inspectionRecordRepository.save(any())).thenReturn(saved);
 
-        controller.create(new InspectionJobRequest(List.of(), "GENERAL", "광고 문구"));
+        controller.create(jwt(), new InspectionJobRequest(List.of(), "GENERAL", "광고 문구"));
 
         ArgumentCaptor<FastApiRequest> judgeRequest = ArgumentCaptor.forClass(FastApiRequest.class);
         verify(aiJudgmentService).requestJudgmentOutcome(judgeRequest.capture());
@@ -93,7 +93,7 @@ class InspectionJobControllerTests {
     @Test
     void moreThanOneProductIsRejectedBeforeAnyProcessing() {
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
-                () -> controller.create(new InspectionJobRequest(List.of("one", "two"), null, "광고 문구")));
+                () -> controller.create(jwt(), new InspectionJobRequest(List.of("one", "two"), null, "광고 문구")));
 
         assertEquals(400, error.getStatusCode().value());
         verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
@@ -107,13 +107,13 @@ class InspectionJobControllerTests {
         InspectionRecord saved = savedRecord(7L);
         when(inspectionRecordRepository.save(any())).thenReturn(saved);
 
-        controller.create(new InspectionJobRequest(List.of(), "UNKNOWN", "광고 문구"));
+        controller.create(jwt(), new InspectionJobRequest(List.of(), "UNKNOWN", "광고 문구"));
 
         ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
         verify(inspectionRecordRepository).save(record.capture());
         assertEquals("TIMEOUT", record.getValue().getStatus());
-        when(inspectionRecordRepository.findById(7L)).thenReturn(Optional.of(record.getValue()));
-        Map<String, Object> loaded = controller.get("7");
+        when(inspectionRecordRepository.findByIdAndUserId(7L, 9L)).thenReturn(Optional.of(record.getValue()));
+        Map<String, Object> loaded = controller.get(jwt(), "7");
         assertEquals("TIMEOUT", loaded.get("status"));
         assertNull(loaded.get("layer2"));
     }
@@ -125,13 +125,17 @@ class InspectionJobControllerTests {
                 new InspectionJobRequest(List.of(" "), null, "광고"),
                 new InspectionJobRequest(List.of(), "NOT_A_TYPE", "광고"));
         assertEquals(400, assertThrows(ResponseStatusException.class,
-                () -> controller.create(null)).getStatusCode().value());
+                () -> controller.create(jwt(), null)).getStatusCode().value());
         for (InspectionJobRequest request : invalid) {
             assertEquals(400, assertThrows(ResponseStatusException.class,
-                    () -> controller.create(request)).getStatusCode().value());
+                    () -> controller.create(jwt(), request)).getStatusCode().value());
         }
         verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
         verify(inspectionRecordRepository, never()).save(any());
+    }
+
+    private static org.springframework.security.oauth2.jwt.Jwt jwt() {
+        return org.springframework.security.oauth2.jwt.Jwt.withTokenValue("test").header("alg", "HS256").subject("9").build();
     }
 
     private static InspectionRecord savedRecord(long id) {

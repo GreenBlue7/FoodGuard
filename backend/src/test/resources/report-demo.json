@@ -1,0 +1,78 @@
+{
+  "demo": true,
+  "request": {
+    "productIds": [],
+    "adText": "[시연] 이 제품으로 질병이 치료됩니다.\n[시연] 누구에게나 효과가 있습니다.\n[시연] 식품은 치료 목적의 의약품이 아닙니다."
+  },
+  "productInfoSource": "UNVERIFIED",
+  "layer2": {
+    "model": "시연용 고정 자료 · AI 미실행",
+    "dataAsOf": "2026-10-01",
+    "sentences": [
+      {
+        "index": 0,
+        "text": "[시연] 이 제품으로 질병이 치료됩니다.",
+        "range": {
+          "end": 22,
+          "start": 0
+        },
+        "isMandatory": false
+      },
+      {
+        "index": 1,
+        "text": "[시연] 누구에게나 효과가 있습니다.",
+        "range": {
+          "end": 43,
+          "start": 23
+        },
+        "isMandatory": false
+      },
+      {
+        "index": 2,
+        "text": "[시연] 식품은 치료 목적의 의약품이 아닙니다.",
+        "range": {
+          "end": 70,
+          "start": 44
+        },
+        "isMandatory": false
+      }
+    ],
+    "findings": [
+      {
+        "id": "demo-review",
+        "verdict": "REVIEW",
+        "sentenceIndexes": [
+          1
+        ],
+        "reason": "[시연용 설명] 모든 사용자에게 동일한 효과가 있다는 표현은 근거와 문맥 확인이 필요하다는 상황을 가정했습니다.",
+        "lawRefs": [],
+        "cases": [],
+        "isTestimonial": null
+      },
+      {
+        "id": "demo-violation",
+        "verdict": "VIOLATION",
+        "sentenceIndexes": [
+          0
+        ],
+        "reason": "[시연용 설명] 질병 치료를 표현한 문장이 지적되는 화면을 보여주기 위한 고정 자료입니다. 실제 판정 결과가 아닙니다.",
+        "lawRefs": [],
+        "cases": [],
+        "revision": "[시연용 수정 예시] 인정된 기능성 범위의 표현으로 검토합니다.",
+        "isTestimonial": null
+      },
+      {
+        "id": "demo-ok",
+        "verdict": "OK",
+        "sentenceIndexes": [
+          2
+        ],
+        "reason": "[시연용 설명] 문제없음 항목의 표시 예시입니다.",
+        "lawRefs": [],
+        "cases": [],
+        "isTestimonial": null
+      }
+    ],
+    "judgedAt": "2026-11-14T14:55:00+09:00"
+  }
+}

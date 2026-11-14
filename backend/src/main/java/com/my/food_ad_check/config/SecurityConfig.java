@@ -26,6 +26,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 기본은 로그인 필요. 로그인 없이 쓸 수 있는 주소만 명시적으로 연다
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/reports/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/email/settings", "/email/verify", "/email/notifications/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/email/verify").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
                         // Access Token이 만료된 상태에서 부르는 API라 토큰 없이 연다. 대신 Refresh Token 쿠키로 확인
                         .requestMatchers(HttpMethod.POST, "/api/auth/refresh", "/api/auth/logout").permitAll()

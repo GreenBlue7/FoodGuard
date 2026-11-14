@@ -119,4 +119,9 @@ export interface InspectionHistoryItem {
   productName: string | null
   adTextPreview: string
   createdAt: string
+  countsAvailable: boolean
+  violationCount: number | null
+  reviewCount: number | null
+  dataAsOf: string | null
+  previousJobId: string | null
 }
