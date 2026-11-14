@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.my.food_ad_check.dto.FastApiRequest;
 import com.my.food_ad_check.service.JudgeProductDetails;
-import com.my.food_ad_check.dto.FastApiResponse;
 import com.my.food_ad_check.dto.InspectionHistoryResponse;
 import com.my.food_ad_check.dto.InspectionJobRequest;
 import com.my.food_ad_check.entity.InspectionRecord;
@@ -28,7 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Synchronous inspection followed by a persisted job lookup.
+ * Durable asynchronous inspection submission followed by an owner-protected job lookup.
  */
 @RestController
 @RequestMapping("/api/inspections")
@@ -37,7 +36,7 @@ public class InspectionJobController {
     private final ProductRepository productRepository;
     private final InspectionRecordRepository inspectionRecordRepository;
     private final ProductApiService productApiService;
-    private final AiJudgmentService aiJudgmentService;
+    private final InspectionJobQueue inspectionJobQueue;
     private final RuleCheckService ruleCheckService;
     private final InspectionHistoryService inspectionHistoryService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -45,13 +44,13 @@ public class InspectionJobController {
     public InspectionJobController(ProductRepository productRepository,
                                    InspectionRecordRepository inspectionRecordRepository,
                                    ProductApiService productApiService,
-                                   AiJudgmentService aiJudgmentService,
+                                   InspectionJobQueue inspectionJobQueue,
                                    RuleCheckService ruleCheckService,
                                    InspectionHistoryService inspectionHistoryService) {
         this.productRepository = productRepository;
         this.inspectionRecordRepository = inspectionRecordRepository;
         this.productApiService = productApiService;
-        this.aiJudgmentService = aiJudgmentService;
+        this.inspectionJobQueue = inspectionJobQueue;
         this.ruleCheckService = ruleCheckService;
         this.inspectionHistoryService = inspectionHistoryService;
     }
@@ -90,6 +89,9 @@ public class InspectionJobController {
                                                 List<SentenceComparison.Edit> sentenceEdits) {
         InspectionRecord previous = inspectionRecordRepository.findByIdAndUserId(jobId, Long.valueOf(jwt.getSubject()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "검수 기록을 찾을 수 없습니다."));
+        if (List.of("PENDING", "RUNNING").contains(previous.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "진행 중인 검사가 끝난 뒤 재검수해 주세요.");
+        }
         if (adText == null || adText.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "수정한 광고 문구를 입력해 주세요.");
         }
@@ -183,14 +185,8 @@ public class InspectionJobController {
         String judgeRequestId = UUID.randomUUID().toString();
         FastApiRequest judgeRequest = new FastApiRequest(judgeRequestId, "C",
                 JudgeProductDetails.request(product, productType, approvedFunctions), adText);
-        AiJudgmentService.JudgmentOutcome outcome = aiJudgmentService.requestJudgmentOutcome(judgeRequest);
-        FastApiResponse judgeResponse = outcome.response();
-        if (productVersion != null && !productRepository.findCurrentVersion(product.getPrdlstReportNo())
-                .filter(productVersion::equals).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "검사 중 제품 정보가 변경됐습니다. 최신 정보로 다시 검사해 주세요.");
-        }
-        String status = outcome.status();
-        String judgedAt = OffsetDateTime.now().toString();
+        String status = "PENDING";
+        String submittedAt = OffsetDateTime.now().toString();
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("request", new InspectionJobRequest(ids, request.productTypeAnswer(), adText));
@@ -201,12 +197,11 @@ public class InspectionJobController {
             default -> "UNDETERMINED";
         });
         result.put("layer1", null);
-        result.put("layer2", judgeResponse == null ? null
-                : InspectionResultMapper.toLayer2(judgeResponse, judgedAt));
+        result.put("layer2", null);
         result.put("provisionalStep1", step1);
         result.put("judgeRequestId", judgeRequestId);
-        result.put("judgeResponse", judgeResponse);
-        result.put("createdAt", judgedAt);
+        result.put("judgeResponse", null);
+        result.put("createdAt", submittedAt);
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("reportNo", product == null ? null : product.getPrdlstReportNo());
         snapshot.put("productType", productType);
@@ -219,8 +214,8 @@ public class InspectionJobController {
         result.put("productDataReviewRequired", product != null && product.isFunctionSourceReviewRequired());
         result.put("previousJobId", previous == null ? null : previous.getId().toString());
         if (selectedRecommendation != null) {
-            result.put("recommendationValidation", InspectionRecommendations.evaluate(previous.getId(),
-                    selectedRecommendation, judgeResponse, status));
+            result.put("recommendationValidation", Map.of("sourceJobId", previous.getId().toString(),
+                    "recommendationId", selectedRecommendation.id(), "status", "PENDING", "message", "수정안 검사를 기다리고 있습니다."));
         }
         if (!sentenceEdits.isEmpty()) result.put("sentenceEditMappings", sentenceEdits);
         if (previous != null) {
@@ -236,7 +231,7 @@ public class InspectionJobController {
                 sourceSnapshot,
                 adText, status, serialize(result), LocalDateTime.now());
         if (previous != null) record.linkToPreviousInspection(previous.getId());
-        InspectionRecord saved = inspectionRecordRepository.save(record);
+        InspectionRecord saved = inspectionJobQueue.enqueue(record, judgeRequest, selectedRecommendation);
         return previous == null ? Map.of("jobId", saved.getId().toString())
                 : Map.of("jobId", saved.getId().toString(), "previousJobId", previous.getId().toString());
     }

@@ -59,3 +59,8 @@ notification-email:
   public-api-url: ${NOTIFICATION_EMAIL_PUBLIC_API_URL:http://localhost:8080}
   public-web-url: ${NOTIFICATION_EMAIL_PUBLIC_WEB_URL:http://127.0.0.1:5173}
   poll-ms: ${NOTIFICATION_EMAIL_POLL_MS:60000}
+inspection:
+  jobs:
+    worker-enabled: ${INSPECTION_JOBS_WORKER_ENABLED:true}
+    poll-ms: ${INSPECTION_JOBS_POLL_MS:1000}
+    lease-ms: ${INSPECTION_JOBS_LEASE_MS:600000}

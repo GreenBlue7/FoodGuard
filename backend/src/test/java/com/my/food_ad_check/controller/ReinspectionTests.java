@@ -18,11 +18,11 @@ import static org.mockito.Mockito.*;
 
 class ReinspectionTests {
     private final InspectionRecordRepository records = mock(InspectionRecordRepository.class);
-    private final AiJudgmentService judge = mock(AiJudgmentService.class);
+    private final InspectionJobQueue queue = mock(InspectionJobQueue.class);
     private final ProductRepository products = mock(ProductRepository.class);
     private final Jwt jwt = Jwt.withTokenValue("test").header("alg", "HS256").subject("9").build();
     private final InspectionJobController controller = new InspectionJobController(products,
-            records, mock(ProductApiService.class), judge, mock(RuleCheckService.class), mock(InspectionHistoryService.class));
+            records, mock(ProductApiService.class), queue, mock(RuleCheckService.class), mock(InspectionHistoryService.class));
 
     private InspectionRecord previous() {
         var record = mock(InspectionRecord.class);
@@ -42,7 +42,7 @@ class ReinspectionTests {
         assertEquals(404, assertThrows(ResponseStatusException.class,
                 () -> controller.reinspect(jwt, 10L, new InspectionJobController.ReinspectionRequest("수정")))
                 .getStatusCode().value());
-        verifyNoInteractions(judge);
+        verifyNoInteractions(queue);
         verify(records, never()).save(any());
     }
 
@@ -54,44 +54,41 @@ class ReinspectionTests {
                     () -> controller.reinspect(jwt, 10L, new InspectionJobController.ReinspectionRequest(text)))
                     .getStatusCode().value());
         }
-        verifyNoInteractions(judge);
+        verifyNoInteractions(queue);
     }
 
     @Test
     void editedTextCreatesLinkedRecordAndUsesOriginalProductType() throws Exception {
         previous();
-        when(judge.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(
-                new FastApiResponse(List.of(), List.of(), "mock", "2026-11-01", 1L), "DONE"));
         var saved = mock(InspectionRecord.class);
         when(saved.getId()).thenReturn(11L);
-        when(records.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
         var result = controller.reinspect(jwt, 10L, new InspectionJobController.ReinspectionRequest("수정 문구"));
         assertEquals(Map.of("jobId", "11", "previousJobId", "10"), result);
         var request = ArgumentCaptor.forClass(FastApiRequest.class);
-        verify(judge).requestJudgmentOutcome(request.capture());
+        verify(queue).enqueue(any(), request.capture(), any());
         assertEquals("수정 문구", request.getValue().adText());
         assertEquals("GENERAL_FOOD", request.getValue().product().type());
         var record = ArgumentCaptor.forClass(InspectionRecord.class);
-        verify(records).save(record.capture());
+        verify(queue).enqueue(record.capture(), any(), any());
         assertEquals(10L, record.getValue().getPreviousInspectionId());
         assertEquals(9L, record.getValue().getUserId());
         var body = new ObjectMapper().readTree(record.getValue().getResultJson());
-        assertTrue(body.path("comparison").path("bothCompleted").asBoolean());
+        assertFalse(body.path("comparison").path("bothCompleted").asBoolean());
         assertFalse(body.path("comparison").path("sameRecordedCriteria").asBoolean());
-        assertEquals(1, body.path("comparison").path("previousCounts").path("VIOLATION").asInt());
+        assertTrue(body.path("comparison").path("previousCounts").isNull());
     }
 
     @Test
-    void failedReinspectionIsNotPresentedAsResolved() {
+    void pendingReinspectionIsNotPresentedAsResolved() {
         previous();
-        when(judge.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(null, "TIMEOUT"));
         var saved = mock(InspectionRecord.class);
         when(saved.getId()).thenReturn(11L);
-        when(records.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
         controller.reinspect(jwt, 10L, new InspectionJobController.ReinspectionRequest("수정"));
         var record = ArgumentCaptor.forClass(InspectionRecord.class);
-        verify(records).save(record.capture());
-        assertEquals("TIMEOUT", record.getValue().getStatus());
+        verify(queue).enqueue(record.capture(), any(), any());
+        assertEquals("PENDING", record.getValue().getStatus());
         assertTrue(record.getValue().getResultJson().contains("\"bothCompleted\":false"));
         assertTrue(record.getValue().getResultJson().contains("\"currentCounts\":null"));
     }
@@ -102,11 +99,10 @@ class ReinspectionTests {
         assertEquals(400, assertThrows(ResponseStatusException.class,
                 () -> controller.recheck(jwt, 10L, new InspectionJobController.CurrentAdRequest("이전 문구", false)))
                 .getStatusCode().value());
-        verifyNoInteractions(judge);
-        when(judge.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(null, "FAILED"));
+        verifyNoInteractions(queue);
         var saved = mock(InspectionRecord.class);
         when(saved.getId()).thenReturn(11L);
-        when(records.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
         assertEquals("11", controller.recheck(jwt, 10L,
                 new InspectionJobController.CurrentAdRequest("이전 문구", true)).get("jobId"));
     }
@@ -120,24 +116,8 @@ class ReinspectionTests {
         assertEquals(409, assertThrows(ResponseStatusException.class,
                 () -> controller.create(jwt, new InspectionJobRequest(List.of("R1"), null, "현재 광고")))
                 .getStatusCode().value());
-        verifyNoInteractions(judge);
+        verifyNoInteractions(queue);
         verify(records, never()).save(any());
     }
 
-    @Test
-    void productChangedDuringJudgeCallCannotBeSavedAsCurrentResult() {
-        var product = new com.my.food_ad_check.entity.Product();
-        product.setPrdlstReportNo("R1");
-        product.setPrdlstNm("제품");
-        product.setProductType("건강기능식품");
-        product.setApprovedFunctions(List.of("면역력 증진"));
-        product.setVersion(1L);
-        when(products.findById("R1")).thenReturn(Optional.of(product));
-        when(products.findCurrentVersion("R1")).thenReturn(Optional.of(2L));
-        when(judge.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(null, "FAILED"));
-        assertEquals(409, assertThrows(ResponseStatusException.class,
-                () -> controller.create(jwt, new InspectionJobRequest(List.of("R1"), null, "현재 광고")))
-                .getStatusCode().value());
-        verify(records, never()).save(any());
-    }
 }

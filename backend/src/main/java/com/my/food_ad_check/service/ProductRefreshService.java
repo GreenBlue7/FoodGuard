@@ -32,13 +32,16 @@ public class ProductRefreshService {
         ProductSyncState previous = states.findById("I0030").orElse(null);
         // Re-read one extra day: date boundaries and delayed publication must not lose changes.
         LocalDate since = previous == null ? null : previous.getCoveredThrough().minusDays(1);
+        LocalDate lastFull = previous == null ? null : previous.getLastFullSyncOn();
+        // Persist successes only: restart cannot reset the weekly deadline; failed full imports retry.
+        if (lastFull == null || lastFull.isAfter(today) || !lastFull.plusDays(7).isAfter(today)) since = null;
         // The API documents a seven-day incremental window. Outside it, recover with a full import.
         if (since != null && (since.isBefore(today.minusDays(7)) || !since.isBefore(today))) since = null;
         ProductApiService.ImportOutcome outcome = importer.importSince(since);
         String mode = since == null ? "전체 복구" : "증분(" + since + " 이후)";
         if (!outcome.completed()) return mode + ": " + outcome.message() + " [기준일 유지]";
         // Today's updates may not be published until 19:00. Never claim today is fully covered.
-        states.saveAndFlush(new ProductSyncState("I0030", today.minusDays(1)));
+        states.saveAndFlush(new ProductSyncState("I0030", today.minusDays(1), since == null ? today : lastFull));
         return mode + ": " + outcome.message();
     }
 }

@@ -27,6 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class NotificationAdFlowHttpTests {
     @Autowired MockMvc mvc;
+    @Autowired com.my.food_ad_check.service.InspectionJobWorker worker;
     @Autowired ProductRepository products;
     @Autowired UserRepository users;
     @Autowired InspectionRecordRepository inspections;
@@ -74,6 +75,7 @@ class NotificationAdFlowHttpTests {
                 .content(json.writeValueAsString(Map.of("productIds", List.of(product.getPrdlstReportNo()), "adText", "원료 안내."))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String id = json.readTree(first).path("jobId").asText();
+        assertTrue(worker.processOne());
         mvc.perform(get("/api/inspections/" + id).with(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.productSnapshot.judgeProduct.ingredients[0]").value("홍삼"))
                 .andExpect(jsonPath("$.productSnapshot.judgeProduct.cautions[0]").value("임산부, 수유부는 상담"))
@@ -89,6 +91,7 @@ class NotificationAdFlowHttpTests {
         String next = mvc.perform(post("/api/inspections/" + id + "/recheck").with(auth)
                 .contentType("application/json").content("{\"adText\":\"원료 안내.\",\"confirmedCurrentAd\":true}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertTrue(worker.processOne());
         mvc.perform(get("/api/inspections/" + json.readTree(next).path("jobId").asText()).with(auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.comparison.sameRecordedCriteria").value(false))
                 .andExpect(jsonPath("$.productSnapshot.judgeProduct.cautions[0]").value("새로운 주의사항"));
@@ -99,6 +102,22 @@ class NotificationAdFlowHttpTests {
         return new FastApiResponse(List.of(new FastApiResponse.Sentence("s1", text, 0, end)),
                 List.of(new FastApiResponse.Result(List.of("s1"), text, status, null, "reason", List.of(),
                         new FastApiResponse.Span(0, end), revision)), "mock", "2026-11-11", 1L);
+    }
+
+    @Test
+    void pendingRecheckDisablesAnotherRecheckInNotificationContext() throws Exception {
+        var f = fixture();
+        var auth = jwt().jwt(j -> j.subject(f.user().getId().toString()));
+        String created = mvc.perform(post("/api/inspections/" + f.inspection().getId() + "/recheck").with(auth)
+                .contentType("application/json").content("{\"adText\":\"감기 예방.\",\"confirmedCurrentAd\":true}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String id = json.readTree(created).path("jobId").asText();
+        mvc.perform(get("/api/notifications/" + f.notification().getId() + "/ad-context").with(auth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.canRecheck").value(false));
+        mvc.perform(post("/api/inspections/" + id + "/reinspections").with(auth)
+                .contentType("application/json").content("{\"adText\":\"수정 광고\"}"))
+                .andExpect(status().isConflict());
+        verifyNoInteractions(judge);
     }
 
     @Test
@@ -119,12 +138,20 @@ class NotificationAdFlowHttpTests {
                 .content("{\"adText\":\"감기 예방.\",\"confirmedCurrentAd\":true}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String jobId = json.readTree(created).path("jobId").asText();
+        mvc.perform(post(recheckUrl).with(auth).contentType("application/json")
+                .content("{\"adText\":\"감기 예방.\",\"confirmedCurrentAd\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.jobId").value(jobId));
+        verifyNoInteractions(judge);
+        assertTrue(worker.processOne());
         mvc.perform(get("/api/inspections/" + jobId + "/recommendations").with(auth))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].suggestedText").value("원료 안내."))
                 .andExpect(jsonPath("$.items[0].validationStatus").value("UNVERIFIED"));
         String validation = mvc.perform(post("/api/inspections/" + jobId + "/recommendations/finding-0/validate").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String validationId = json.readTree(validation).path("jobId").asText();
+        mvc.perform(post("/api/inspections/" + jobId + "/recommendations/finding-0/validate").with(auth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.jobId").value(validationId));
+        assertTrue(worker.processOne());
         mvc.perform(get("/api/inspections/" + validationId).with(auth))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.recommendationValidation.status").value("PASSED_THIS_CHECK"))
@@ -165,6 +192,7 @@ class NotificationAdFlowHttpTests {
                 .contentType("application/json").content("{\"adText\":\"감기 예방.\",\"confirmedCurrentAd\":true}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String jobId = json.readTree(first).path("jobId").asText();
+        assertTrue(worker.processOne());
         String endpoint = "/api/inspections/" + jobId + "/reinspections";
         mvc.perform(post(endpoint).with(auth).contentType("application/json").content("""
                 {"adText":"원료 안내.","sentenceEdits":[{"previousSentenceId":"missing","currentStart":0,"currentEnd":6}]}
@@ -174,6 +202,7 @@ class NotificationAdFlowHttpTests {
                 {"adText":"원료 안내.","sentenceEdits":[{"previousSentenceId":"s1","currentStart":0,"currentEnd":6}]}
                 """)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String nextId = json.readTree(next).path("jobId").asText();
+        assertTrue(worker.processOne());
         mvc.perform(get("/api/inspections/" + nextId).with(auth)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.comparison.sentenceComparisonAvailable").value(true))
                 .andExpect(jsonPath("$.comparison.sentenceSummary.resolvedThisCheck").value(1))

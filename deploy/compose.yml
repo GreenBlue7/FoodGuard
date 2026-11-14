@@ -1,0 +1,100 @@
+name: foodguard-production
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    command: ["postgres", "-c", "timezone=Asia/Seoul"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-foodguard}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    image: pgvector/pgvector:pg17
+    entrypoint: ["/bin/sh", "/deploy/migrate.sh"]
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-foodguard}
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - ./migrate.sh:/deploy/migrate.sh:ro
+      - ../backend/db:/migrations:ro
+      - ../judge/sql:/judge-schema:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  judge:
+    build: ../judge
+    restart: unless-stopped
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-foodguard}
+    volumes:
+      - hf_cache:/cache/huggingface
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8080}:8080"
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-foodguard}
+      TZ: Asia/Seoul
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET}
+      JWT_REFRESH_COOKIE_SECURE: "true"
+      JUDGE_URL: http://judge:8000/judge
+      JUDGE_TIMEOUT_MS: "180000"
+      INSPECTION_JOBS_WORKER_ENABLED: ${INSPECTION_JOBS_WORKER_ENABLED:-true}
+      FOOD_SAFETY_API_KEY: ${FOOD_SAFETY_API_KEY:-}
+      FOOD_SAFETY_API_BASE_URL: https://openapi.foodsafetykorea.go.kr/api
+      FOOD_SAFETY_SCHEDULED_REFRESH_ENABLED: ${FOOD_SAFETY_SCHEDULED_REFRESH_ENABLED:-false}
+      FOOD_SAFETY_REFRESH_CRON: ${FOOD_SAFETY_REFRESH_CRON:-0 0 3 * * *}
+      FOOD_SAFETY_IMPORT_ENABLED: "false"
+      NOTIFICATION_EMAIL_ENABLED: ${NOTIFICATION_EMAIL_ENABLED:-false}
+      NOTIFICATION_EMAIL_FROM: ${NOTIFICATION_EMAIL_FROM:-foodguard@localhost}
+      NOTIFICATION_EMAIL_PUBLIC_API_URL: ${PUBLIC_SERVICE_URL:?Set HTTPS PUBLIC_SERVICE_URL}
+      NOTIFICATION_EMAIL_PUBLIC_WEB_URL: ${PUBLIC_SERVICE_URL:?Set HTTPS PUBLIC_SERVICE_URL}
+      MAIL_HOST: ${MAIL_HOST:-localhost}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-true}
+      MAIL_STARTTLS: ${MAIL_STARTTLS:-true}
+      SERVER_FORWARD_HEADERS_STRATEGY: framework
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      judge:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 15s
+      timeout: 3s
+      start_period: 45s
+      retries: 10
+
+volumes:
+  postgres_data:
+  hf_cache:

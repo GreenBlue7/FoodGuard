@@ -119,9 +119,8 @@ available for existing backend clients.
 
 `POST /api/inspections` accepts `{ "productIds": ["report-no"],
 "productTypeAnswer": "GENERAL", "adText": "..." }`. At most one product is
-accepted for the midterm demonstration. The endpoint completes the rule check
-and judge call, saves the result, then returns only `{ "jobId": "1" }`.
-This is synchronous execution, not a background queue. The browser can then
+accepted for the midterm demonstration. The endpoint durably queues the inspection and returns `{ "jobId": "1" }` immediately.
+A background worker performs the judge call; see `ASYNC_INSPECTIONS.md`. The browser can then
 call `GET /api/inspections/{jobId}` to read the saved result. A missing or
 unrecognized product uses `GENERAL_FOOD` only when the answer is `GENERAL`;
 otherwise the judge receives `UNKNOWN` in mode C. The judge's case database
@@ -166,3 +165,14 @@ project compiles with a Java 17 toolchain. From `backend`, run
 `gradlew.bat test` (or `./gradlew test` on Unix). The Spring context test also
 checks that Hibernate can validate the new schema. This check does not create
 the judge-owned `cases` table or test the full Vue-to-judge flow.
+
+## Deployment preparation (2026-11-14)
+
+See `../deploy/README.md` for the separate backend deployment stack, environment
+settings, SQL migration history, HTTPS proxy routes and backup procedure.
+The shared local Compose file is unchanged. Managed fresh DBs apply 001–012;
+existing manually managed DBs must apply missing migrations explicitly.
+`010_weekly_full_sync.sql` stores the last successful full MFDS import date.
+Daily incremental refresh now switches to full import every seven days, and
+failed imports preserve both checkpoint dates. Existing unknown full dates
+trigger a full import on the next scheduled run. Scheduling remains off by default.

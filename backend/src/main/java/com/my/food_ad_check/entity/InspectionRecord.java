@@ -37,6 +37,11 @@ public class InspectionRecord {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "request_fingerprint", length = 64)
+    private String requestFingerprint;
+
+    public void identifyRequest(String fingerprint) { this.requestFingerprint = fingerprint; }
+
     @Column(name = "result_json", nullable = false, columnDefinition = "TEXT")
     private String resultJson;
 
@@ -52,6 +57,14 @@ public class InspectionRecord {
     private Long previousInspectionId;
 
     public Long getPreviousInspectionId() { return previousInspectionId; }
+
+    public void finish(String status, String resultJson) {
+        if (!java.util.Set.of("DONE", "FAILED", "TIMEOUT").contains(status)) {
+            throw new IllegalArgumentException("Invalid terminal inspection status");
+        }
+        this.status = status;
+        this.resultJson = resultJson;
+    }
 
     public void linkToPreviousInspection(Long previousInspectionId) {
         this.previousInspectionId = previousInspectionId;

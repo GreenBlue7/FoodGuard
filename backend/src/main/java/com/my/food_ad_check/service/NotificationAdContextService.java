@@ -32,7 +32,8 @@ public class NotificationAdContextService {
         var product = products.findById(reportNo).orElse(null);
         var previous = inspections.findFirstByUserIdAndPrdlstReportNoOrderByCreatedAtDescIdDesc(userId, reportNo).orElse(null);
         boolean review = product != null && product.isFunctionSourceReviewRequired();
-        boolean canRecheck = product != null && previous != null && !review;
+        boolean busy = previous != null && ("PENDING".equals(previous.getStatus()) || "RUNNING".equals(previous.getStatus()));
+        boolean canRecheck = product != null && previous != null && !review && !busy;
         return new Context(notificationId, reportNo, product == null ? null : product.getPrdlstNm(),
                 previous == null ? null : previous.getId().toString(), previous == null ? null : previous.getAdText(),
                 notification.getChange().getCurrentSource(), product == null ? null : product.getPrimaryFnclty(),
@@ -40,6 +41,7 @@ public class NotificationAdContextService {
                 review, canRecheck, true, product == null ? "현재 제품 정보를 확인할 수 없습니다."
                 : review ? "최신 원문에서 기능성 목록을 자동 추출하지 못해 재검수를 보류했습니다."
                 : previous == null ? "불러올 검사 기록이 없습니다. 광고를 새로 입력해 검사해주세요."
+                : busy ? "이미 접수된 검사가 진행 중입니다. 검사 결과를 확인한 뒤 재검수해주세요."
                 : "불러온 문구가 현재 게재 중인 광고와 같은지 확인하고, 다르면 수정한 뒤 재검수해주세요.");
     }
 }

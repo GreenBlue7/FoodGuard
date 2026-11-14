@@ -16,7 +16,7 @@ import com.my.food_ad_check.entity.InspectionRecord;
 import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
-import com.my.food_ad_check.service.AiJudgmentService;
+import com.my.food_ad_check.service.InspectionJobQueue;
 import com.my.food_ad_check.service.InspectionHistoryService;
 import com.my.food_ad_check.service.ProductApiService;
 import com.my.food_ad_check.service.RuleCheckService;
@@ -37,7 +37,7 @@ class InspectionJobControllerTests {
     @Mock private ProductRepository productRepository;
     @Mock private InspectionRecordRepository inspectionRecordRepository;
     @Mock private ProductApiService productApiService;
-    @Mock private AiJudgmentService aiJudgmentService;
+    @Mock private InspectionJobQueue queue;
     @Mock private RuleCheckService ruleCheckService;
     @Mock private InspectionHistoryService inspectionHistoryService;
 
@@ -46,47 +46,41 @@ class InspectionJobControllerTests {
     @BeforeEach
     void setUp() {
         controller = new InspectionJobController(productRepository, inspectionRecordRepository,
-                productApiService, aiJudgmentService, ruleCheckService, inspectionHistoryService);
+                productApiService, queue, ruleCheckService, inspectionHistoryService);
     }
 
     @Test
-    void unknownProductStillCallsJudgeAndCanBeReadByJobId() {
-        when(aiJudgmentService.requestJudgmentOutcome(any())).thenReturn(new AiJudgmentService.JudgmentOutcome(
-                new FastApiResponse(List.of(), List.of(), "mock", "2026-10-13", 1L), "DONE"));
+    void unknownProductQueuesSnapshotAndCanBeReadWhilePending() {
         InspectionRecord saved = org.mockito.Mockito.mock(InspectionRecord.class);
         when(saved.getId()).thenReturn(42L);
-        when(inspectionRecordRepository.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
 
         Map<String, String> created = controller.create(jwt(),
                 new InspectionJobRequest(List.of("missing"), "UNKNOWN", "광고 문구"));
 
         assertEquals("42", created.get("jobId"));
         ArgumentCaptor<FastApiRequest> judgeRequest = ArgumentCaptor.forClass(FastApiRequest.class);
-        verify(aiJudgmentService).requestJudgmentOutcome(judgeRequest.capture());
+        verify(queue).enqueue(any(), judgeRequest.capture(), any());
         assertEquals("UNKNOWN", judgeRequest.getValue().product().type());
         ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
-        verify(inspectionRecordRepository).save(record.capture());
+        verify(queue).enqueue(record.capture(), any(), any());
         when(inspectionRecordRepository.findByIdAndUserId(42L, 9L)).thenReturn(Optional.of(record.getValue()));
 
         Map<String, Object> loaded = controller.get(jwt(), "42");
-        assertEquals("DONE", loaded.get("status"));
+        assertEquals("PENDING", loaded.get("status"));
         assertEquals("UNVERIFIED", loaded.get("productInfoSource"));
-        assertNotNull(loaded.get("layer2"));
-        assertEquals("mock", ((Map<?, ?>) loaded.get("layer2")).get("model"));
-        assertEquals("mock", ((Map<?, ?>) loaded.get("judgeResponse")).get("model"));
+        assertNull(loaded.get("layer2"));
     }
 
     @Test
-    void unregisteredGeneralFoodAnswerSelectsGeneralFoodForJudge() {
-        when(aiJudgmentService.requestJudgmentOutcome(any()))
-                .thenReturn(new AiJudgmentService.JudgmentOutcome(null, "FAILED"));
+    void unregisteredGeneralFoodAnswerQueuesGeneralFoodSnapshot() {
         InspectionRecord saved = savedRecord(1L);
-        when(inspectionRecordRepository.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
 
         controller.create(jwt(), new InspectionJobRequest(List.of(), "GENERAL", "광고 문구"));
 
         ArgumentCaptor<FastApiRequest> judgeRequest = ArgumentCaptor.forClass(FastApiRequest.class);
-        verify(aiJudgmentService).requestJudgmentOutcome(judgeRequest.capture());
+        verify(queue).enqueue(any(), judgeRequest.capture(), any());
         assertEquals("GENERAL_FOOD", judgeRequest.getValue().product().type());
     }
 
@@ -96,25 +90,23 @@ class InspectionJobControllerTests {
                 () -> controller.create(jwt(), new InspectionJobRequest(List.of("one", "two"), null, "광고 문구")));
 
         assertEquals(400, error.getStatusCode().value());
-        verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
+        verify(queue, never()).enqueue(any(), any(), any());
         verify(inspectionRecordRepository, never()).save(any());
     }
 
     @Test
-    void timeoutIsSavedAndReturnedWithoutLayer2() {
-        when(aiJudgmentService.requestJudgmentOutcome(any()))
-                .thenReturn(new AiJudgmentService.JudgmentOutcome(null, "TIMEOUT"));
+    void submissionIsPendingWithoutLayer2() {
         InspectionRecord saved = savedRecord(7L);
-        when(inspectionRecordRepository.save(any())).thenReturn(saved);
+        when(queue.enqueue(any(), any(), any())).thenReturn(saved);
 
         controller.create(jwt(), new InspectionJobRequest(List.of(), "UNKNOWN", "광고 문구"));
 
         ArgumentCaptor<InspectionRecord> record = ArgumentCaptor.forClass(InspectionRecord.class);
-        verify(inspectionRecordRepository).save(record.capture());
-        assertEquals("TIMEOUT", record.getValue().getStatus());
+        verify(queue).enqueue(record.capture(), any(), any());
+        assertEquals("PENDING", record.getValue().getStatus());
         when(inspectionRecordRepository.findByIdAndUserId(7L, 9L)).thenReturn(Optional.of(record.getValue()));
         Map<String, Object> loaded = controller.get(jwt(), "7");
-        assertEquals("TIMEOUT", loaded.get("status"));
+        assertEquals("PENDING", loaded.get("status"));
         assertNull(loaded.get("layer2"));
     }
 
@@ -130,7 +122,7 @@ class InspectionJobControllerTests {
             assertEquals(400, assertThrows(ResponseStatusException.class,
                     () -> controller.create(jwt(), request)).getStatusCode().value());
         }
-        verify(aiJudgmentService, never()).requestJudgmentOutcome(any());
+        verify(queue, never()).enqueue(any(), any(), any());
         verify(inspectionRecordRepository, never()).save(any());
     }
 
