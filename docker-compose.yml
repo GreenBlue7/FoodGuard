@@ -36,8 +36,6 @@ services:
             GEMINI_MODEL: ${GEMINI_MODEL}
             # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
             DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
-        volumes:
-            - hf_cache:/cache/huggingface # Named volume for the bge-m3 model cache
         depends_on:
             db:
                 condition: service_healthy
@@ -45,4 +43,3 @@ services:
 # Named volumes
 volumes:
     postgres_data:
-    hf_cache:
