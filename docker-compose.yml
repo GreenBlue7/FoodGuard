@@ -18,6 +18,8 @@ services:
             - ./backend/db/003_users.sql:/docker-entrypoint-initdb.d/03_backend_users.sql:ro # Users + inspection ownership
             - ./backend/db/004_refresh_sessions.sql:/docker-entrypoint-initdb.d/04_backend_refresh_sessions.sql:ro # Login sessions (refresh tokens)
             - ./judge/sql/cases.sql:/docker-entrypoint-initdb.d/10_cases.sql:ro # Judge case table
+            - ./backend/db/seed_products.sql.gz:/docker-entrypoint-initdb.d/20_seed_products.sql.gz:ro # Product seed (2026-11-17)
+            - ./judge/sql/seed_cases.sql.gz:/docker-entrypoint-initdb.d/21_seed_cases.sql.gz:ro # Case seed with precomputed embeddings
         # Readiness probe
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-foodguard}"]
