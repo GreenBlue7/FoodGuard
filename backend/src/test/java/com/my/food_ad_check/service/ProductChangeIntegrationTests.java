@@ -26,6 +26,7 @@ class ProductChangeIntegrationTests {
     @Autowired ProductNotificationService notificationService;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired ProductSyncStateRepository syncStates;
+    @Autowired ProductSyncRunTracker syncRuns;
 
     @Test
     @org.springframework.transaction.annotation.Transactional
@@ -33,9 +34,9 @@ class ProductChangeIntegrationTests {
         var api = mock(ProductApiService.class);
         when(api.importSince(any())).thenReturn(new ProductApiService.ImportOutcome(true, "ok"));
         var clock = java.time.Clock.fixed(java.time.Instant.parse("2026-11-10T18:00:00Z"), java.time.ZoneOffset.UTC);
-        new ProductRefreshService(api, syncStates, clock).refresh();
+        new ProductRefreshService(api, syncStates, clock, syncRuns).refresh();
         assertEquals(java.time.LocalDate.of(2026, 11, 10), syncStates.findById("I0030").orElseThrow().getCoveredThrough());
-        new ProductRefreshService(api, syncStates, clock).refresh();
+        new ProductRefreshService(api, syncStates, clock, syncRuns).refresh();
         verify(api).importSince(java.time.LocalDate.of(2026, 11, 9));
     }
 

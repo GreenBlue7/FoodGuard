@@ -19,13 +19,16 @@ public class InspectionJobQueue {
     private final JdbcTemplate db;
     private final InspectionRecordRepository records;
     private final long leaseMs;
+    private final InspectionAdmissionPolicy admission;
     private final ObjectMapper json = new ObjectMapper();
 
     public InspectionJobQueue(JdbcTemplate db, InspectionRecordRepository records,
             @Value("${inspection.jobs.lease-ms:600000}") long leaseMs,
-            @Value("${judge.timeout-ms:180000}") long judgeTimeoutMs) {
+            @Value("${judge.timeout-ms:180000}") long judgeTimeoutMs,
+            InspectionAdmissionPolicy admission) {
         this.db = db;
         this.records = records;
+        this.admission = admission;
         // Connect and read limits are separate. Allow both plus a completion margin.
         this.leaseMs = Math.max(leaseMs, 2 * judgeTimeoutMs + 60000);
     }
@@ -38,28 +41,30 @@ public class InspectionJobQueue {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.UNAUTHORIZED, "사용자 정보를 확인할 수 없습니다.");
         }
-        identifyOlderActiveJobs(record.getUserId());
+        identifyActiveJobs(record.getUserId());
         String fingerprint = InspectionRequestFingerprint.of(record, request, recommendation);
         var existing = db.queryForList("""
                 SELECT id FROM inspection_records WHERE user_id=? AND request_fingerprint=?
                     AND status IN ('PENDING','RUNNING')
                 """, Long.class, record.getUserId(), fingerprint);
         if (!existing.isEmpty()) return records.findByIdAndUserId(existing.get(0), record.getUserId()).orElseThrow();
+        admission.check(record.getUserId());
         record.identifyRequest(fingerprint);
         InspectionRecord saved = records.saveAndFlush(record);
         db.update("""
                 INSERT INTO inspection_job_queue(job_id,judge_request_json,recommendation_json)
                 VALUES(?,?,?)
                 """, saved.getId(), encode(request), recommendation == null ? null : encode(recommendation));
+        admission.recordAccepted(record.getUserId());
         return saved;
     }
 
-    private void identifyOlderActiveJobs(Long userId) {
-        // Adopt pre-migration queued work without cancelling or repeating any of its calls.
+    private void identifyActiveJobs(Long userId) {
+        // Refresh active fingerprints when preflight metadata changes; never repeat a paid call.
         var older = db.queryForList("""
                 SELECT r.id,q.judge_request_json,q.recommendation_json
                 FROM inspection_records r JOIN inspection_job_queue q ON q.job_id=r.id
-                WHERE r.user_id=? AND r.request_fingerprint IS NULL AND r.status IN ('PENDING','RUNNING')
+                WHERE r.user_id=? AND r.status IN ('PENDING','RUNNING')
                 ORDER BY r.id
                 """, userId);
         for (var row : older) {
@@ -71,7 +76,7 @@ public class InspectionJobQueue {
                 var recommendation = draft == null ? null : json.readValue(draft, InspectionRecommendations.Draft.class);
                 String fingerprint = InspectionRequestFingerprint.of(old, request, recommendation);
                 db.update("""
-                        UPDATE inspection_records SET request_fingerprint=? WHERE id=?
+                        UPDATE inspection_records SET request_fingerprint=? WHERE id=? AND status IN ('PENDING','RUNNING')
                         AND NOT EXISTS (SELECT 1 FROM inspection_records WHERE user_id=?
                             AND request_fingerprint=? AND status IN ('PENDING','RUNNING'))
                         """, fingerprint, id, userId, fingerprint);

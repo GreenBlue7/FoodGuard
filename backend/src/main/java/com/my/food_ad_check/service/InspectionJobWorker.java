@@ -46,6 +46,7 @@ public class InspectionJobWorker {
                 failure(result, "PRODUCT_CHANGED", "대기 중 제품 정보가 변경됐습니다. 최신 정보로 다시 검사해 주세요.");
             } else {
                 FastApiRequest request = json.readValue(claim.requestJson(), FastApiRequest.class);
+                InspectionInputValidator.validateText(request.adText());
                 var outcome = judge.requestJudgmentOutcome(request);
                 if (outcome != null && java.util.Set.of("DONE", "FAILED", "TIMEOUT").contains(outcome.status())) {
                     status = outcome.status();
@@ -58,6 +59,11 @@ public class InspectionJobWorker {
                     failure(result, "PRODUCT_CHANGED", "검사 중 제품 정보가 변경됐습니다. 최신 정보로 다시 검사해 주세요.");
                 }
             }
+        } catch (InspectionInputException invalid) {
+            response = null;
+            status = "FAILED";
+            result.put("layer1", invalid.validation());
+            failure(result, invalid.code(), invalid.getReason());
         } catch (Exception failure) {
             response = null;
             status = "FAILED";

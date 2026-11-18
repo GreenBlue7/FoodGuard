@@ -119,15 +119,15 @@ available for existing backend clients.
 
 `POST /api/inspections` accepts `{ "productIds": ["report-no"],
 "productTypeAnswer": "GENERAL", "adText": "..." }`. At most one product is
-accepted for the midterm demonstration. The endpoint durably queues the inspection and returns `{ "jobId": "1" }` immediately.
+accepted per inspection item. For 1–3 independent inspection items in one atomic submission, use `POST /api/inspections/batch`; see `BATCH_INSPECTIONS.md`. The endpoint durably queues the inspection and returns `{ "jobId": "1" }` immediately.
 A background worker performs the judge call; see `ASYNC_INSPECTIONS.md`. The browser can then
 call `GET /api/inspections/{jobId}` to read the saved result. A missing or
 unrecognized product uses `GENERAL_FOOD` only when the answer is `GENERAL`;
 otherwise the judge receives `UNKNOWN` in mode C. The judge's case database
 may remain separate; set `JUDGE_URL` to its reachable HTTP endpoint.
 
-The new lookup returns `status` (`DONE`, `FAILED`, or `TIMEOUT`), `request`,
-`productInfoSource`, `provisionalStep1`, the original `judgeResponse`, and a
+The lookup returns `status` (`PENDING`, `RUNNING`, `DONE`, `FAILED`, or `TIMEOUT`), `request`,
+`productInfoSource`, input-validation `layer1`, the original `judgeResponse`, and a
 `layer2` projection when the judge responds. That projection maps sentence
 positions, verdicts, reasons, model and case-corpus date to the Vue field names.
 Judge `HOLD` becomes Vue `REVIEW`; the original verdict remains in
@@ -141,9 +141,7 @@ the judge's case corpus, not the product database or legal rules. The Vue type
 currently requires a boolean and a date string, so the team still needs to
 settle those two fields before claiming exact contract compatibility.
 
-`layer1` remains `null`: `rule.json` is provisional and must not be presented
-as an approved legal rule. Do not invent a product sale status or legal text to
-fill the remaining gaps.
+`layer1` now checks input readiness only, including a maximum of 3,000 Unicode code points (spaces and newlines included). Advertising content is judged by the judge service. See `INPUT_VALIDATION.md` for error codes, response format, and frontend integration. The temporary mandatory-phrase rule and its unused services have been removed. Existing saved results are preserved.
 
 The judge call distinguishes socket timeouts from other connection failures.
 Missing or inconsistent judge response fields produce a saved `FAILED` job;
@@ -170,9 +168,17 @@ the judge-owned `cases` table or test the full Vue-to-judge flow.
 
 See `../deploy/README.md` for the separate backend deployment stack, environment
 settings, SQL migration history, HTTPS proxy routes and backup procedure.
-The shared local Compose file is unchanged. Managed fresh DBs apply 001–012;
+The shared local Compose file is unchanged. Managed fresh DBs apply 001–014;
 existing manually managed DBs must apply missing migrations explicitly.
 `010_weekly_full_sync.sql` stores the last successful full MFDS import date.
 Daily incremental refresh now switches to full import every seven days, and
 failed imports preserve both checkpoint dates. Existing unknown full dates
 trigger a full import on the next scheduled run. Scheduling remains off by default.
+
+## Read-only operations status
+
+ADMIN can query `GET /api/operations/status` for DB connectivity, inspection queue
+counts, persisted product refresh outcomes and notification-email outbox status.
+Apply `014_product_sync_runs.sql` before this version. See `OPERATIONS_STATUS.md`
+for unknown/attention states, count definitions and privacy boundaries.
+The endpoint performs no external AI/MFDS/SMTP calls and no retries or writes.

@@ -105,12 +105,24 @@ export async function request<T>(
   if (response.status === 204) return undefined as T
   if (response.status === 404) throw new NotFoundError(`찾을 수 없습니다: ${method} ${path}`)
   if (!response.ok) {
-    throw new ApiError(
-      `요청이 실패했습니다 (${response.status}): ${method} ${path}`,
-      response.status,
-    )
+    let message = `요청이 실패했습니다 (${response.status}): ${method} ${path}`
+    if (response.headers.get('Content-Type')?.includes('application/json')) {
+      try {
+        const payload: unknown = await response.json()
+        if (
+          payload &&
+          typeof payload === 'object' &&
+          'message' in payload &&
+          typeof payload.message === 'string'
+        ) {
+          message = payload.message
+        }
+      } catch {
+        /* Keep status-based fallback when the error body cannot be read. */
+      }
+    }
+    throw new ApiError(message, response.status)
   }
-
   // 백엔드 대신 HTML 오류 페이지 등이 돌아온 경우를 걸러냄
   const contentType = response.headers.get('Content-Type') ?? ''
   if (responseType === 'html') {

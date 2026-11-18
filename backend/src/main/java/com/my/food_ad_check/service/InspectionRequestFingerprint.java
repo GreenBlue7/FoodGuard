@@ -20,11 +20,10 @@ public final class InspectionRequestFingerprint {
         try {
             JsonNode input = JSON.readTree(record.getResultJson());
             Map<String, Object> identity = new TreeMap<>();
-            identity.put("schema", 1);
+            identity.put("schema", 2);
             identity.put("request", input.path("request"));
             identity.put("productSnapshot", input.path("productSnapshot"));
             identity.put("productInfoSource", input.path("productInfoSource"));
-            identity.put("provisionalStep1", input.path("provisionalStep1"));
             identity.put("previousJobId", record.getPreviousInspectionId());
             identity.put("sentenceEdits", input.has("sentenceEditMappings")
                     ? input.get("sentenceEditMappings") : JSON.createArrayNode());

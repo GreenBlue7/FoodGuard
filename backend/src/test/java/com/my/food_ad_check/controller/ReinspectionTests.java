@@ -22,7 +22,7 @@ class ReinspectionTests {
     private final ProductRepository products = mock(ProductRepository.class);
     private final Jwt jwt = Jwt.withTokenValue("test").header("alg", "HS256").subject("9").build();
     private final InspectionJobController controller = new InspectionJobController(products,
-            records, mock(ProductApiService.class), queue, mock(RuleCheckService.class), mock(InspectionHistoryService.class));
+            records, mock(ProductApiService.class), queue, new InspectionInputValidator(), mock(InspectionHistoryService.class));
 
     private InspectionRecord previous() {
         var record = mock(InspectionRecord.class);

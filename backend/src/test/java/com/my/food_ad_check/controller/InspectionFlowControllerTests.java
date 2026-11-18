@@ -14,7 +14,6 @@ import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
 import com.my.food_ad_check.service.AiJudgmentService;
 import com.my.food_ad_check.service.ProductApiService;
-import com.my.food_ad_check.service.RuleCheckService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,7 +30,6 @@ class InspectionFlowControllerTests {
     @Mock private InspectionRecordRepository inspectionRecordRepository;
     @Mock private ProductApiService productApiService;
     @Mock private AiJudgmentService aiJudgmentService;
-    @Mock private RuleCheckService ruleCheckService;
 
     private ProductController productController;
 

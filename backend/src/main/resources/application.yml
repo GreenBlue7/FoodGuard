@@ -64,3 +64,7 @@ inspection:
     worker-enabled: ${INSPECTION_JOBS_WORKER_ENABLED:true}
     poll-ms: ${INSPECTION_JOBS_POLL_MS:1000}
     lease-ms: ${INSPECTION_JOBS_LEASE_MS:600000}
+  limits:
+    max-active: ${INSPECTION_MAX_ACTIVE:3}
+    max-new-per-window: ${INSPECTION_MAX_NEW_PER_WINDOW:5}
+    window-seconds: ${INSPECTION_WINDOW_SECONDS:60}

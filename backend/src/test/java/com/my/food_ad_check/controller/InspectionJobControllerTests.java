@@ -19,7 +19,7 @@ import com.my.food_ad_check.repository.ProductRepository;
 import com.my.food_ad_check.service.InspectionJobQueue;
 import com.my.food_ad_check.service.InspectionHistoryService;
 import com.my.food_ad_check.service.ProductApiService;
-import com.my.food_ad_check.service.RuleCheckService;
+import com.my.food_ad_check.service.InspectionInputValidator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,7 +38,7 @@ class InspectionJobControllerTests {
     @Mock private InspectionRecordRepository inspectionRecordRepository;
     @Mock private ProductApiService productApiService;
     @Mock private InspectionJobQueue queue;
-    @Mock private RuleCheckService ruleCheckService;
+    private final InspectionInputValidator inputValidator = new InspectionInputValidator();
     @Mock private InspectionHistoryService inspectionHistoryService;
 
     private InspectionJobController controller;
@@ -46,7 +46,7 @@ class InspectionJobControllerTests {
     @BeforeEach
     void setUp() {
         controller = new InspectionJobController(productRepository, inspectionRecordRepository,
-                productApiService, queue, ruleCheckService, inspectionHistoryService);
+                productApiService, queue, inputValidator, inspectionHistoryService);
     }
 
     @Test

@@ -20,6 +20,7 @@ const ENDPOINTS = {
 export interface InspectionApi {
   searchProducts(query: string): Promise<Product[]>
   createInspection(req: InspectionRequest): Promise<{ jobId: string }>
+  createBatch(items: InspectionRequest[]): Promise<{ items: { index: number; jobId: string }[] }>
   // 없는 jobId면 NotFoundError(./errors)로 reject
   getJob(jobId: string): Promise<InspectionJob>
   // page는 0부터, 백엔드에서 음수는 0, size는 1-50으로 보정
@@ -33,6 +34,15 @@ export const inspectionApi: InspectionApi = {
   },
   createInspection(req) {
     return request<{ jobId: string }>(ENDPOINTS.inspections, { method: 'POST', body: req })
+  },
+  createBatch(items) {
+    return request<{ items: { index: number; jobId: string }[] }>(
+      `${ENDPOINTS.inspections}/batch`,
+      {
+        method: 'POST',
+        body: { items },
+      },
+    )
   },
   getJob(jobId) {
     return request<InspectionJob>(ENDPOINTS.inspection(jobId))

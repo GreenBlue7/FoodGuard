@@ -36,6 +36,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // 식약처 데이터 적재 등 관리용 API. USER가 호출하면 403
                         .requestMatchers("/api/data/**").hasRole("ADMIN")
+                        .requestMatchers("/api/operations/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 // "Authorization: Bearer <JWT>"를 JwtDecoder 빈으로 검증한다. 토큰이 없거나 잘못되면 401
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt

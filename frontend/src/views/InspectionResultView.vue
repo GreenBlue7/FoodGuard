@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { inspectionApi } from '@/api/inspection'
 import JobStatusBadge from '@/components/result/JobStatusBadge.vue'
 import Layer1Panel from '@/components/result/Layer1Panel.vue'
+import InputValidationPanel from '@/components/result/InputValidationPanel.vue'
 import Layer2Panel from '@/components/result/Layer2Panel.vue'
 import BaseIcon from '@/components/ui/BaseIcon.vue'
 import { isInProgress, useInspectionJob } from '@/composables/useInspectionJob'
@@ -16,6 +17,13 @@ const props = defineProps<{
 
 // 스토어 없이 jobId만으로 상태를 복원 (새로고침·링크 공유 대응)
 const { job, loadState, timedOut, recheck } = useInspectionJob(() => props.jobId)
+const inputValidation = computed(() =>
+  job.value?.layer1?.kind === 'INPUT_VALIDATION' ? job.value.layer1 : null,
+)
+const legacyLayer1 = computed(() => {
+  const layer = job.value?.layer1
+  return layer && layer.kind !== 'INPUT_VALIDATION' ? layer : null
+})
 
 // 서버가 알려 준 상태
 // 프론트 시간 초과(timedOut)는 여기에 X
@@ -208,7 +216,8 @@ async function retry() {
       </section>
 
       <!-- 1층 결과는 백엔드에서 먼저 계산되므로, 2층 판정이 끝나기 전이라도 도착하면 보여줌 -->
-      <Layer1Panel v-if="job?.layer1" :layer1="job.layer1" />
+      <InputValidationPanel v-if="inputValidation" :validation="inputValidation" />
+      <Layer1Panel v-else-if="legacyLayer1" :layer1="legacyLayer1" />
     </div>
 
     <Layer2Panel

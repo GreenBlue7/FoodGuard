@@ -1,18 +1,32 @@
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import type { InspectionRequest, Product, ProductTypeAnswer } from '@/types/inspection'
+import { useAuthStore } from '@/stores/auth'
 
 // 검사 요청 전의 입력 상태(/ 화면)
 // 결과 화면은 이 스토어 없이 jobId만으로 동작
 export const useInspectionStore = defineStore('inspection', () => {
+  const batchDrafts = ref<{ id: string; label: string; request: InspectionRequest }[]>([])
+  const auth = useAuthStore()
+  watch(
+    () => auth.accessToken,
+    (token) => {
+      if (token === null) {
+        batchDrafts.value = []
+        selectedProducts.value = []
+        adText.value = ''
+        productTypeAnswer.value = null
+      }
+    },
+  )
   const selectedProducts = ref<Product[]>([])
   const adText = ref('')
   // 2a 흐름의 답
   // null이면 미응답 (건강기능식품은 "번호 없이 진행"을 눌러야 값이 들어옴)
   const productTypeAnswer = ref<ProductTypeAnswer | null>(null)
 
-  // 중간 발표 범위에서는 검사 한 번에 제품 하나만 보냄 (백엔드가 2개 이상이면 400)
-  // 그래서 추가하지 않고 교체함. 요청 형식(productIds 배열)은 기말의 여러 제품 검사를 위해 그대로 둠
+  // 작성 중인 검사 항목에는 제품 하나를 지정한다.
+  // 여러 검사는 각각 목록에 담고 별도 번호표로 접수한다.
   function selectProduct(product: Product) {
     if (selectedProducts.value.some((selected) => selected.id === product.id)) return
     selectedProducts.value = [product]
@@ -34,6 +48,23 @@ export const useInspectionStore = defineStore('inspection', () => {
     return request
   }
 
+  function addBatchDraft(label: string) {
+    if (batchDrafts.value.length >= 3) return false
+    batchDrafts.value.push({ id: crypto.randomUUID(), label, request: toRequest() })
+    selectedProducts.value = []
+    productTypeAnswer.value = null
+    adText.value = ''
+    return true
+  }
+
+  function removeBatchDraft(id: string) {
+    batchDrafts.value = batchDrafts.value.filter((item) => item.id !== id)
+  }
+
+  function clearBatchDrafts() {
+    batchDrafts.value = []
+  }
+
   return {
     selectedProducts,
     adText,
@@ -41,5 +72,9 @@ export const useInspectionStore = defineStore('inspection', () => {
     selectProduct,
     deselectProduct,
     toRequest,
+    batchDrafts,
+    addBatchDraft,
+    removeBatchDraft,
+    clearBatchDrafts,
   }
 })

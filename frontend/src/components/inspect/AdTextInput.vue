@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { countCodePoints } from '@/utils/text'
+import { countCodePoints, MAX_AD_TEXT_CHARACTERS } from '@/utils/text'
 
 const text = defineModel<string>({ required: true })
 
@@ -21,11 +21,19 @@ function onInput(event: Event) {
       :value="text"
       rows="12"
       aria-describedby="ad-text-length"
+      :aria-invalid="length > MAX_AD_TEXT_CHARACTERS"
       class="mt-2 block w-full resize-y rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm leading-relaxed outline-hidden transition focus:border-primary focus:ring-4 focus:ring-accent/40"
       @input="onInput"
     ></textarea>
-    <p id="ad-text-length" class="mt-2 px-1 text-right text-xs text-ink-600 tabular-nums">
-      {{ length }}자
+    <p
+      id="ad-text-length"
+      class="mt-2 px-1 text-right text-xs tabular-nums"
+      :class="length > MAX_AD_TEXT_CHARACTERS ? 'text-red-700' : 'text-ink-600'"
+    >
+      {{ length }} / {{ MAX_AD_TEXT_CHARACTERS }}자
+    </p>
+    <p v-if="length > MAX_AD_TEXT_CHARACTERS" role="alert" class="mt-1 px-1 text-sm text-red-700">
+      공백·줄바꿈을 포함해 3,000자 이내로 줄여 주세요.
     </p>
   </div>
 </template>

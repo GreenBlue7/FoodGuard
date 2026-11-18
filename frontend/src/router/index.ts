@@ -14,6 +14,12 @@ declare module 'vue-router' {
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/inspection-batches',
+    name: 'inspection-batch',
+    component: () => import('@/views/InspectionBatchView.vue'),
+    meta: { title: 'Inspection Batch' },
+  },
+  {
     path: '/inspections/:jobId/report',
     name: 'inspection-report',
     component: () => import('@/views/InspectionReportView.vue'),

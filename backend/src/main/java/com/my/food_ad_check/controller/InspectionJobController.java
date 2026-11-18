@@ -25,6 +25,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Durable asynchronous inspection submission followed by an owner-protected job lookup.
@@ -37,7 +38,7 @@ public class InspectionJobController {
     private final InspectionRecordRepository inspectionRecordRepository;
     private final ProductApiService productApiService;
     private final InspectionJobQueue inspectionJobQueue;
-    private final RuleCheckService ruleCheckService;
+    private final InspectionInputValidator inputValidator;
     private final InspectionHistoryService inspectionHistoryService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -45,13 +46,13 @@ public class InspectionJobController {
                                    InspectionRecordRepository inspectionRecordRepository,
                                    ProductApiService productApiService,
                                    InspectionJobQueue inspectionJobQueue,
-                                   RuleCheckService ruleCheckService,
+                                   InspectionInputValidator inputValidator,
                                    InspectionHistoryService inspectionHistoryService) {
         this.productRepository = productRepository;
         this.inspectionRecordRepository = inspectionRecordRepository;
         this.productApiService = productApiService;
         this.inspectionJobQueue = inspectionJobQueue;
-        this.ruleCheckService = ruleCheckService;
+        this.inputValidator = inputValidator;
         this.inspectionHistoryService = inspectionHistoryService;
     }
 
@@ -60,6 +61,42 @@ public class InspectionJobController {
     public Map<String, String> create(@AuthenticationPrincipal Jwt jwt,
                                       @RequestBody(required = false) InspectionJobRequest request) {
         return createInternal(jwt, request, null);
+    }
+
+    public record BatchRequest(List<InspectionJobRequest> items) { }
+    public record BatchItem(int index, String jobId) { }
+    public record BatchResponse(List<BatchItem> items) { }
+
+    /** Every item uses the existing durable queue. Commit all tickets together or none. */
+    @PostMapping("/batch")
+    @Transactional
+    public BatchResponse createBatch(@AuthenticationPrincipal Jwt jwt,
+                                    @RequestBody(required = false) BatchRequest request) {
+        if (request == null || request.items() == null || request.items().isEmpty()
+                || request.items().size() > 3) {
+            throw new InspectionInputException(HttpStatus.BAD_REQUEST, "INVALID_BATCH_SIZE",
+                    "검사 목록은 1건부터 최대 3건까지 접수할 수 있습니다.", null);
+        }
+        // Validate the complete list before preparing any queue entries.
+        for (int i = 0; i < request.items().size(); i++) {
+            try { inputValidator.validate(request.items().get(i)); }
+            catch (InspectionInputException invalid) { throw batchFailure(i, invalid); }
+        }
+        var tickets = new java.util.ArrayList<BatchItem>();
+        for (int i = 0; i < request.items().size(); i++) {
+            try {
+                tickets.add(new BatchItem(i, createInternal(jwt, request.items().get(i), null).get("jobId")));
+            } catch (InspectionInputException invalid) {
+                throw batchFailure(i, invalid);
+            }
+        }
+        return new BatchResponse(List.copyOf(tickets));
+    }
+
+    private InspectionInputException batchFailure(int index, InspectionInputException invalid) {
+        return new InspectionInputException(HttpStatus.valueOf(invalid.getStatusCode().value()),
+                invalid.code(), (index + 1) + "번 검사: " + invalid.getReason(),
+                invalid.validation().characterCount());
     }
 
     public record ReinspectionRequest(String adText, List<SentenceComparison.Edit> sentenceEdits) {
@@ -92,9 +129,7 @@ public class InspectionJobController {
         if (List.of("PENDING", "RUNNING").contains(previous.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "진행 중인 검사가 끝난 뒤 재검수해 주세요.");
         }
-        if (adText == null || adText.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "수정한 광고 문구를 입력해 주세요.");
-        }
+        InspectionInputValidator.validateText(adText);
         if (!allowUnchanged && adText.trim().equals(previous.getAdText())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "기존 문구와 같습니다. 수정한 문구를 입력해 주세요.");
         }
@@ -132,24 +167,10 @@ public class InspectionJobController {
 
     private Map<String, String> createInternal(Jwt jwt, InspectionJobRequest request, InspectionRecord previous,
             InspectionRecommendations.Draft selectedRecommendation, List<SentenceComparison.Edit> sentenceEdits) {
-        if (request == null || request.adText() == null || request.adText().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검수할 광고 문구를 입력해 주세요.");
-        }
-        List<String> ids = request.productIds() == null ? List.of() : request.productIds();
-        if (ids.size() > 1 || (ids.size() == 1 && (ids.get(0) == null || ids.get(0).isBlank()))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검사 한 번에 제품 하나만 선택해 주세요.");
-        }
-        if (request.productTypeAnswer() != null && !List.of(
-                        "HEALTH_FUNCTIONAL", "FUNCTIONAL_GENERAL", "GENERAL", "UNKNOWN")
-                .contains(request.productTypeAnswer())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "알 수 없는 제품 유형 답변입니다.");
-        }
-
-        ids = ids.isEmpty() ? List.of() : List.of(ids.get(0).trim());
+        var input = inputValidator.validate(request);
+        List<String> ids = input.productIds();
         Product product = ids.isEmpty() ? null : productRepository.findById(ids.get(0)).orElse(null);
-        if (product != null && product.isFunctionSourceReviewRequired()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "최신 기능성 목록을 자동 추출하지 못해 검사를 보류했습니다. 데이터 갱신 후 다시 시도해 주세요.");
-        }
+        inputValidator.validateProduct(product, input.characterCount());
         Long productVersion = product == null ? null : product.getVersion();
         String productType = product == null
                 ? ("GENERAL".equals(request.productTypeAnswer()) ? "GENERAL_FOOD" : "UNKNOWN")
@@ -165,7 +186,7 @@ public class InspectionJobController {
             case "GENERAL_FOOD" -> "일반식품";
             default -> null;
         };
-        String adText = request.adText().trim();
+        String adText = input.adText();
         String sourceSnapshot = product == null ? null : product.getPrimaryFnclty();
         List<String> approvedFunctions = List.of();
         if (product != null && "HEALTH_FUNCTIONAL".equals(productType)) {
@@ -174,13 +195,6 @@ public class InspectionJobController {
                 approvedFunctions = productApiService.parsePrimaryFnclty(product.getPrimaryFnclty());
             }
         }
-
-        List<String> missingItems = koreanType == null ? List.of()
-                : ruleCheckService.checkMandatoryPhrases(koreanType, adText);
-        Map<String, Object> step1 = new LinkedHashMap<>();
-        step1.put("status", koreanType == null ? "REVIEW" : missingItems.isEmpty() ? "PASS" : "FAIL");
-        step1.put("missingItems", missingItems);
-        step1.put("provisional", true);
 
         String judgeRequestId = UUID.randomUUID().toString();
         FastApiRequest judgeRequest = new FastApiRequest(judgeRequestId, "C",
@@ -196,9 +210,8 @@ public class InspectionJobController {
             case "GENERAL_FOOD" -> "GENERAL";
             default -> "UNDETERMINED";
         });
-        result.put("layer1", null);
+        result.put("layer1", inputValidator.passed(input.characterCount(), source));
         result.put("layer2", null);
-        result.put("provisionalStep1", step1);
         result.put("judgeRequestId", judgeRequestId);
         result.put("judgeResponse", null);
         result.put("createdAt", submittedAt);

@@ -53,7 +53,7 @@ No real API keys, users, product rows, inspection records or mail are included.
 
 ## Migration behavior and upgrades
 
-`migrate.sh` applies backend `001` through `012` and the judge-owned cases schema,
+`migrate.sh` applies backend `001` through `014` and the judge-owned cases schema,
 in order. A PostgreSQL advisory lock serializes migration processes. Each SQL file
 and its SHA-256 history row commit atomically. A second run skips unchanged files;
 editing an already applied file stops startup. Add a new numbered migration for
@@ -72,7 +72,7 @@ docker compose --env-file deploy/.env -f deploy/compose.yml run --rm migrate
 that already contains products without migration history. Do not initialize it,
 delete its volume or fabricate migration history. Back up and restore a copy first.
 For the current manually managed local database, 001–009 were already applied;
-Apply missing migrations through `012_inspection_request_fingerprint.sql` before starting this backend version.
+Apply missing migrations through `014_product_sync_runs.sql` before starting this backend version.
 Migrating an existing deployment to the managed runner needs a separate audited
 baseline procedure. Fresh production volumes are independent of local volumes.
 
