@@ -1,3 +1,40 @@
+## Docker로 전체 실행하기
+
+### 1 `.env` 준비
+
+루트의 `.env` 에 `.env.example`을 복사한 뒤 다음 값들을 채우기 
+
+- `GEMINI_API_KEY`: Google AI Studio에서 발급
+- `JWT_SECRET`: `openssl rand -base64 32`의 출력값
+
+### 2 실행
+
+```bash
+docker compose --profile full up -d --build
+```
+
+- 첫 실행은 이미지 빌드와 임베딩 모델(약 2.3GB) 다운로드로 수 분 시간소요
+- DB를 처음 만들 때 식약처 건강기능식품 데이터와 적발 사례 시드가 자동으로 적재
+
+### 3 사용
+
+1. http://localhost:8080 접속
+2. 회원가입
+3. 제품 검색(예: `홍삼`) → 광고 문구 입력 → 검사
+4. 판정은 Gemini를 여러 번 호출해서 수십 초에서 1분 정도 소요 
+
+### 4 종료
+
+```bash
+docker compose --profile full down
+```
+
+처음 상태로 되돌리려면 `-v`를 붙임. 가입한 계정과 검수 기록이 지워지고, 제품과 사례는 다음 실행 때 다시 자동으로 들어감
+
+```bash
+docker compose --profile full down -v
+```
+
 ## 로컬 개발 환경
 
 ### 1 필요한 것
@@ -24,6 +61,8 @@ docker compose up -d --build            # DB(5433) + judge(8000)
 cd backend && ./gradlew bootRun         # 8080. Windows는 gradlew.bat bootRun
 cd frontend && npm ci && npm run dev    # http://localhost:5173
 ```
+- DB 볼륨을 새로 만들면 제품과 사례 시드가 자동으로 들어감. 식약처 API 키와 적재 작업은 필요X
+- 사례 CSV(`judge/data/`)를 바꾸면 시드(`judge/sql/seed_cases.sql.gz`)를 다시 생성 
 
 백엔드는 반드시 `backend` 폴더에서 실행해야 루트의 `.env`를 읽음
 
