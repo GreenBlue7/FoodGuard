@@ -1,3 +1,40 @@
+## Docker로 전체 실행하기
+
+### 1 `.env` 준비
+
+루트의 `.env` 에 `.env.example`을 복사한 뒤 다음 값들을 채우기 
+
+- `GEMINI_API_KEY`: Google AI Studio에서 발급
+- `JWT_SECRET`: `openssl rand -base64 32`의 출력값
+
+### 2 실행
+
+```bash
+docker compose --profile full up -d --build
+```
+
+- 첫 실행은 이미지 빌드와 임베딩 모델(약 2.3GB) 다운로드로 수 분 시간소요
+- DB를 처음 만들 때 식약처 건강기능식품 데이터와 적발 사례 시드가 자동으로 적재
+
+### 3 사용
+
+1. http://localhost:8080 접속
+2. 회원가입
+3. 제품 검색(예: `홍삼`) → 광고 문구 입력 → 검사
+4. 판정은 Gemini를 여러 번 호출해서 수십 초에서 1분 정도 소요 
+
+### 4 종료
+
+```bash
+docker compose --profile full down
+```
+
+처음 상태로 되돌리려면 `-v`를 붙임. 가입한 계정과 검수 기록이 지워지고, 제품과 사례는 다음 실행 때 다시 자동으로 들어감
+
+```bash
+docker compose --profile full down -v
+```
+
 ## 로컬 개발 환경
 
 ### 1 필요한 것
@@ -24,6 +61,8 @@ docker compose up -d --build            # DB(5433) + judge(8000)
 cd backend && ./gradlew bootRun         # 8080. Windows는 gradlew.bat bootRun
 cd frontend && npm ci && npm run dev    # http://localhost:5173
 ```
+- DB 볼륨을 새로 만들면 제품과 사례 시드가 자동으로 들어감. 식약처 API 키와 적재 작업은 필요X
+- 사례 CSV(`judge/data/`)를 바꾸면 시드(`judge/sql/seed_cases.sql.gz`)를 다시 생성 
 
 백엔드는 반드시 `backend` 폴더에서 실행해야 루트의 `.env`를 읽음
 
@@ -43,7 +82,87 @@ SQL은 docker 볼륨을 처음 만들 때만 자동 실행됨. 기존 DB에 `use
   docker compose exec -T db psql -U postgres -d foodguard < backend/db/003_users.sql
   docker compose exec -T db psql -U postgres -d foodguard < backend/db/004_refresh_sessions.sql
   ```
+### 6 시드 데이터 갱신
 
+DB를 새로 만들 때 들어가는 데이터는 두 파일. 원본 데이터가 바뀌면 아래 순서로 다시 만들고 커밋
+
+| 시드 | 원본 |
+| --- | --- |
+| `backend/db/seed_products.sql.gz` | 식약처 Open API I0030 (건강기능식품 품목제조 신고사항) |
+| `judge/sql/seed_cases.sql.gz` | `judge/data/cases_mfds_2025.csv` |
+
+#### 제품 데이터 (식약처 API)
+
+1. 식품안전나라 Open API에서 I0030 키를 발급받아 `.env`에 추가. 키는 `.env`에만 두고 커밋 금지
+
+   ```
+   FOOD_SAFETY_API_KEY=발급받은 키
+   FOOD_SAFETY_IMPORT_ENABLED=true
+   ```
+
+2. `docker compose up -d`로 db, judge를 띄우고 `backend` 폴더에서 `./gradlew bootRun`
+
+3. 화면에서 회원가입한 뒤 그 계정을 ADMIN으로 변경 (적재 API는 ADMIN 전용)
+
+   ```bash
+   docker compose exec db psql -U postgres -d foodguard -c "UPDATE users SET role = 'ADMIN' WHERE email = '가입한 이메일';"
+   ```
+
+4. 다시 로그인해서 JWT토큰 받기. 권한은 토큰을 발급할 때 정해지므로 권한을 바꾼 뒤 새로 받아야 함 
+
+   ```bash
+   curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"email":"가입한 이메일","password":"비밀번호"}'
+   ```
+
+5. 응답의 `accessToken`으로 적재 실행. 5분 정도 걸리고 끝날 때까지 응답이 없음. 진행 상황은 백엔드 로그의 `I0030 적재 진행`
+
+   ```bash
+   curl -X POST http://localhost:8080/api/data/load-all -H "Authorization: Bearer <accessToken값>"
+   ```
+
+   - 이미 있는 제품의 인정 기능성 목록은 유지되고, 새 제품만 자동으로 파싱됨 (`backend/README.md` 참고)
+   - 실패하면(502) 같은 명령을 다시 실행. 저장된 제품은 덮어쓰기만 함
+
+6. 레포 루트에서 시드 다시 만들기
+
+   ```bash
+   docker compose exec db sh -c "pg_dump -U postgres -d foodguard --data-only -t products -t product_approved_functions | gzip > /tmp/seed_products.sql.gz"
+   docker compose cp db:/tmp/seed_products.sql.gz backend/db/seed_products.sql.gz
+   ```
+
+7. `docker-compose.yml`의 `# Product seed (날짜)` 주석을 오늘 날짜로 변경
+
+8. `.env`에서 `FOOD_SAFETY_*` 두 줄 삭제
+
+#### 사례 데이터 (CSV)
+
+1. `judge/data/cases_mfds_2025.csv`를 새 파일로 교체, 2026년 이후 날짜가 한 줄이라도 있으면 전체가 거부됨 (2026년 사례는 평가용)
+2. 레포 루트에서 적재. 적재 스크립트는 같은 `id`를 덮어쓰기만 하고 지우지 않으므로, 삭제된 행이 남지 않게 먼저 비움
+
+   ```bash
+   docker compose cp judge/data/cases_mfds_2025.csv judge:/tmp/cases.csv
+   docker compose exec db psql -U postgres -d foodguard -c "TRUNCATE cases;"
+   docker compose exec judge python -m scripts.load_cases /tmp/cases.csv
+   ```
+
+   출력의 `N줄을 읽었습니다`와 `모두 N줄입니다`의 숫자가 같아야 함
+
+3. 시드 다시 만들기
+
+   ```bash
+   docker compose exec db sh -c "pg_dump -U postgres -d foodguard --data-only -t cases | gzip > /tmp/seed_cases.sql.gz"
+   docker compose cp db:/tmp/seed_cases.sql.gz judge/sql/seed_cases.sql.gz
+   ```
+
+#### 확인
+
+시드는 DB 볼륨이 비어 있을 때만 들어가므로, 볼륨을 지우고 다시 띄워서 확인. 가입한 계정과 검수 기록도 지워짐
+
+```bash
+docker compose down -v
+docker compose up -d
+docker compose exec db psql -U postgres -d foodguard -c "SELECT (SELECT count(*) FROM products) AS products, (SELECT count(*) FROM cases) AS cases;"
+```
 ## Git 워크플로우
 
 ### 1 브랜치 전략

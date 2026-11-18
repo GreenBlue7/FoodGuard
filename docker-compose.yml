@@ -38,9 +38,41 @@ services:
             GEMINI_MODEL: ${GEMINI_MODEL}
             # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
             DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
+            # Model for the confirm, recheck and fact-check steps; the default matches pipeline.py
+            JUDGE_STRONG_MODEL: ${JUDGE_STRONG_MODEL:-gemini-3.5-flash}
         depends_on:
             db:
                 condition: service_healthy
+
+    # Springboot API (--profile full)
+    backend:
+        build: ./backend
+        profiles: ["full"]
+        environment:
+            # Inside the compose network
+            DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-foodguard}
+            DB_USERNAME: ${POSTGRES_USER:-postgres}
+            DB_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+            JWT_SECRET: ${JWT_SECRET}
+            JUDGE_URL: http://judge:8000/judge
+            # Must stay below proxy_read_timeout (180s) in frontend/nginx.conf
+            JUDGE_TIMEOUT_MS: ${JUDGE_TIMEOUT_MS:-120000}
+            # The demo is served over plain http, so the refresh cookie cannot require HTTPS
+            JWT_REFRESH_COOKIE_SECURE: "false"
+            # LocalDateTime.now() follows the JVM time zone, and containers default to UTC
+            TZ: Asia/Seoul
+        depends_on:
+            db:
+                condition: service_healthy
+
+    # Vue app served by nginx, which also proxies /api to the backend
+    frontend:
+        build: ./frontend
+        profiles: ["full"]
+        ports:
+            - "${FRONTEND_PORT:-8080}:80"
+        depends_on:
+            - backend
 
 # Named volumes
 volumes:

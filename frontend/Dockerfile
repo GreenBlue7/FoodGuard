@@ -8,7 +8,6 @@ WORKDIR /app
 # Cache node_modules layer
 # Manifests change less often than sources, so the install layer stays cached on code-only edits
 COPY package.json package-lock.json ./
-RUN npm ci
 
 # npm ci installs exactly what the lockfile pins, including the devDependencies the build needs
 # (vite, vue-tsc); setting NODE_ENV=production here would skip them and break the build
