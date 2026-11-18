@@ -18,6 +18,8 @@ services:
             - ./backend/db/003_users.sql:/docker-entrypoint-initdb.d/03_backend_users.sql:ro # Users + inspection ownership
             - ./backend/db/004_refresh_sessions.sql:/docker-entrypoint-initdb.d/04_backend_refresh_sessions.sql:ro # Login sessions (refresh tokens)
             - ./judge/sql/cases.sql:/docker-entrypoint-initdb.d/10_cases.sql:ro # Judge case table
+            - ./backend/db/seed_products.sql.gz:/docker-entrypoint-initdb.d/20_seed_products.sql.gz:ro # Product seed (2026-11-17)
+            - ./judge/sql/seed_cases.sql.gz:/docker-entrypoint-initdb.d/21_seed_cases.sql.gz:ro # Case seed with precomputed embeddings
         # Readiness probe
         healthcheck:
             test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-foodguard}"]
@@ -36,13 +38,42 @@ services:
             GEMINI_MODEL: ${GEMINI_MODEL}
             # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
             DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
-        volumes:
-            - hf_cache:/cache/huggingface # Named volume for the bge-m3 model cache
+            # Model for the confirm, recheck and fact-check steps; the default matches pipeline.py
+            JUDGE_STRONG_MODEL: ${JUDGE_STRONG_MODEL:-gemini-3.5-flash}
         depends_on:
             db:
                 condition: service_healthy
 
+    # Springboot API (--profile full)
+    backend:
+        build: ./backend
+        profiles: ["full"]
+        environment:
+            # Inside the compose network
+            DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-foodguard}
+            DB_USERNAME: ${POSTGRES_USER:-postgres}
+            DB_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+            JWT_SECRET: ${JWT_SECRET}
+            JUDGE_URL: http://judge:8000/judge
+            # Must stay below proxy_read_timeout (180s) in frontend/nginx.conf
+            JUDGE_TIMEOUT_MS: ${JUDGE_TIMEOUT_MS:-120000}
+            # The demo is served over plain http, so the refresh cookie cannot require HTTPS
+            JWT_REFRESH_COOKIE_SECURE: "false"
+            # LocalDateTime.now() follows the JVM time zone, and containers default to UTC
+            TZ: Asia/Seoul
+        depends_on:
+            db:
+                condition: service_healthy
+
+    # Vue app served by nginx, which also proxies /api to the backend
+    frontend:
+        build: ./frontend
+        profiles: ["full"]
+        ports:
+            - "${FRONTEND_PORT:-8080}:80"
+        depends_on:
+            - backend
+
 # Named volumes
 volumes:
     postgres_data:
-    hf_cache:
