@@ -65,7 +65,8 @@ CONFIRM_RUNS = int(os.environ.get("JUDGE_CONFIRM_RUNS", "2"))  # 위반 확인�
 # 시험용 스위치. 켜면 숫자·성분 주장을 등록 정보와 페이지 표시사항에 맞춰 보는 사실 대조를 한다
 JUDGE_FACT = os.environ.get("JUDGE_FACT", "1") == "1"
 # 위반을 확정하는 단계(다시 확인, 사실 대조)에만 쓰는 상위 모델. 비우면 1차 판정과 같은 모델을 쓴다
-STRONG_MODEL = os.environ.get("JUDGE_STRONG_MODEL", "gemini-3.5-flash") or None
+# 3.5-flash 는 Google 에서 3.6 으로 자동 연결됐지만, OpenRouter 에서는 3.5 그대로 2배 넘는 가격이 청구된다
+STRONG_MODEL = os.environ.get("JUDGE_STRONG_MODEL", "gemini-3.6-flash") or None
 _DOWNGRADE_LABEL = {
     Downgrade.NO_BODY_EFFECT: "몸의 기능 효과를 말하지 않은 문장",
     Downgrade.PARAPHRASE: "인정받은 기능성을 바꿔 말한 표현",
