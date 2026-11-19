@@ -36,10 +36,13 @@ services:
             # Gemini settings - read from .env in this directory
             GEMINI_API_KEY: ${GEMINI_API_KEY}
             GEMINI_MODEL: ${GEMINI_MODEL}
+            # Where to call Gemini: gemini (Google direct, free dev key) / openrouter (team credit, demo and evaluation)
+            LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+            OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
             # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
             DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
             # Model for the confirm, recheck and fact-check steps; the default matches pipeline.py
-            JUDGE_STRONG_MODEL: ${JUDGE_STRONG_MODEL:-gemini-3.5-flash}
+            JUDGE_STRONG_MODEL: ${JUDGE_STRONG_MODEL:-gemini-3.6-flash}
         depends_on:
             db:
                 condition: service_healthy
