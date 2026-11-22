@@ -13,17 +13,36 @@ services:
         volumes:
             - postgres_data:/var/lib/postgresql/data # Named volume for PostgreSQL data
             # Init scripts --> run once, only when the data volume is empty (in file name order)
-            - ./backend/db/001_core.sql:/docker-entrypoint-initdb.d/01_backend_core.sql:ro # Backend tables (Spring uses ddl-auto: validate)
-            - ./backend/db/002_pgvector.sql:/docker-entrypoint-initdb.d/02_backend_pgvector.sql:ro # pgvector extension
-            - ./backend/db/003_users.sql:/docker-entrypoint-initdb.d/03_backend_users.sql:ro # Users + inspection ownership
-            - ./backend/db/004_refresh_sessions.sql:/docker-entrypoint-initdb.d/04_backend_refresh_sessions.sql:ro # Login sessions (refresh tokens)
-            - ./judge/sql/cases.sql:/docker-entrypoint-initdb.d/10_cases.sql:ro # Judge case table
+            - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/00_schema.sh:ro
+            - ./deploy/migrate.sh:/deploy/migrate.sh:ro
+            - ./backend/db:/migrations:ro
+            - ./judge/sql:/judge-schema:ro
+            - ./backend/db/seed_products.sql.gz:/docker-entrypoint-initdb.d/20_seed_products.sql.gz:ro # Product seed (2026-11-17)
+            - ./judge/sql/seed_cases.sql.gz:/docker-entrypoint-initdb.d/21_seed_cases.sql.gz:ro # Case seed with precomputed embeddings
         # Readiness probe
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-foodguard}"]
+            test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-foodguard}"]
             interval: 5s
             timeout: 3s
             retries: 10
+
+    # Check upgrades before starting the full backend. Existing unmanaged DBs stop safely.
+    migrate:
+        image: pgvector/pgvector:pg17
+        profiles: ["full"]
+        entrypoint: ["sh", "/deploy/migrate.sh"]
+        environment:
+            PGHOST: db
+            PGDATABASE: ${POSTGRES_DB:-foodguard}
+            PGUSER: ${POSTGRES_USER:-postgres}
+            PGPASSWORD: ${POSTGRES_PASSWORD:-devpass}
+        volumes:
+            - ./deploy/migrate.sh:/deploy/migrate.sh:ro
+            - ./backend/db:/migrations:ro
+            - ./judge/sql:/judge-schema:ro
+        depends_on:
+            db:
+                condition: service_healthy
 
     # Judge Engine
     judge:
@@ -34,15 +53,72 @@ services:
             # Gemini settings - read from .env in this directory
             GEMINI_API_KEY: ${GEMINI_API_KEY}
             GEMINI_MODEL: ${GEMINI_MODEL}
+            # Where to call Gemini: gemini (Google direct, free dev key) / openrouter (team credit, demo and evaluation)
+            LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+            OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
             # Service NAME + CONTAINER port (not the host 5433) - injected, not hardcoded in code
             DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-devpass}@db:5432/${POSTGRES_DB:-foodguard}
+            # Model for the confirm, recheck and fact-check steps; the default matches pipeline.py
+            JUDGE_STRONG_MODEL: ${JUDGE_STRONG_MODEL:-gemini-3.6-flash}
+            LLM_USAGE_LOG: /logs/llm-usage.jsonl
         volumes:
-            - hf_cache:/cache/huggingface # Named volume for the bge-m3 model cache
+            - judge_logs:/logs
+        healthcheck:
+            test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3)"]
+            interval: 5s
+            timeout: 5s
+            start_period: 30s
+            retries: 20
         depends_on:
             db:
+                condition: service_healthy
+
+    # Springboot API (--profile full)
+    backend:
+        build: ./backend
+        profiles: ["full"]
+        environment:
+            # Inside the compose network
+            DB_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-foodguard}
+            DB_USERNAME: ${POSTGRES_USER:-postgres}
+            DB_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+            JWT_SECRET: ${JWT_SECRET}
+            JUDGE_URL: http://judge:8000/judge
+            JUDGE_TIMEOUT_MS: ${JUDGE_TIMEOUT_MS:-180000}
+            INSPECTION_JOBS_WORKER_ENABLED: ${INSPECTION_JOBS_WORKER_ENABLED:-true}
+            INSPECTION_MAX_ACTIVE: ${INSPECTION_MAX_ACTIVE:-3}
+            INSPECTION_MAX_NEW_PER_WINDOW: ${INSPECTION_MAX_NEW_PER_WINDOW:-5}
+            INSPECTION_WINDOW_SECONDS: ${INSPECTION_WINDOW_SECONDS:-60}
+            FOOD_SAFETY_SCHEDULED_REFRESH_ENABLED: "false"
+            FOOD_SAFETY_IMPORT_ENABLED: "false"
+            NOTIFICATION_EMAIL_ENABLED: "false"
+            # The demo is served over plain http, so the refresh cookie cannot require HTTPS
+            JWT_REFRESH_COOKIE_SECURE: "false"
+            # LocalDateTime.now() follows the JVM time zone, and containers default to UTC
+            TZ: Asia/Seoul
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+            judge:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+            interval: 5s
+            timeout: 3s
+            start_period: 30s
+            retries: 20
+
+    # Vue app served by nginx, which also proxies /api to the backend
+    frontend:
+        build: ./frontend
+        profiles: ["full"]
+        ports:
+            - "${FRONTEND_PORT:-8080}:80"
+        depends_on:
+            backend:
                 condition: service_healthy
 
 # Named volumes
 volumes:
     postgres_data:
-    hf_cache:
+    judge_logs:
