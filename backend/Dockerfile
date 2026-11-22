@@ -21,7 +21,7 @@ COPY src ./src
 # Cache mount: keeps downloaded dependencies between builds without storing them in the image
 # -x test: @SpringBootTest needs a database, which does not exist at build time
 # --no-daemon: a one-off build has no use for a background Gradle process
-RUN --mount=type=cache,target=/root/.gradle ./gradlew bootJar --no-daemon -x test
+RUN --mount=type=cache,target=/root/.gradle sed -i 's/\r$//' gradlew && sh ./gradlew bootJar --no-daemon -x test
 
 # ============================================
 # Stage 2: Runtime (minimal, deployed)
@@ -33,7 +33,9 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # bootJar produces a single jar; `./gradlew build` would also create *-plain.jar and break this copy
-COPY --from=builder /app/build/libs/*.jar app.jar
+RUN groupadd --system foodguard && useradd --system --gid foodguard foodguard
+COPY --from=builder --chown=foodguard:foodguard /app/build/libs/*.jar app.jar
+USER foodguard
 
 # Documents server.port in application.yml; the host port is mapped in docker-compose.yml
 EXPOSE 8080

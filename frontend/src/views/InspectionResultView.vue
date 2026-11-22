@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { inspectionApi } from '@/api/inspection'
 import JobStatusBadge from '@/components/result/JobStatusBadge.vue'
 import Layer1Panel from '@/components/result/Layer1Panel.vue'
+import InputValidationPanel from '@/components/result/InputValidationPanel.vue'
+import ImageInspectionResult from '@/components/result/ImageInspectionResult.vue'
 import Layer2Panel from '@/components/result/Layer2Panel.vue'
 import BaseIcon from '@/components/ui/BaseIcon.vue'
 import { isInProgress, useInspectionJob } from '@/composables/useInspectionJob'
@@ -16,10 +18,18 @@ const props = defineProps<{
 
 // 스토어 없이 jobId만으로 상태를 복원 (새로고침·링크 공유 대응)
 const { job, loadState, timedOut, recheck } = useInspectionJob(() => props.jobId)
+const inputValidation = computed(() =>
+  job.value?.layer1?.kind === 'INPUT_VALIDATION' ? job.value.layer1 : null,
+)
+const legacyLayer1 = computed(() => {
+  const layer = job.value?.layer1
+  return layer && layer.kind !== 'INPUT_VALIDATION' ? layer : null
+})
 
 // 서버가 알려 준 상태
 // 프론트 시간 초과(timedOut)는 여기에 X
 const status = computed(() => job.value?.status ?? null)
+const isImage = computed(() => job.value?.inspectionKind === 'IMAGE')
 const inProgress = computed(
   () => !timedOut.value && status.value !== null && isInProgress(status.value),
 )
@@ -63,7 +73,7 @@ const productInfoNotice = computed(() =>
 // 판정이 끝난 경우에만 판정별 건수를 셈
 const verdictStats = computed(() => {
   const findings = status.value === 'DONE' ? job.value?.layer2?.findings : undefined
-  if (!findings) return []
+  if (!findings || isImage.value) return []
   return (
     (['VIOLATION', 'REVIEW', 'OK', 'HOLD'] as const)
       .map((verdict) => ({
@@ -105,7 +115,18 @@ async function retry() {
 
 <template>
   <div class="flex flex-col gap-8">
-    <h1 class="text-5xl tracking-tight text-ink-900">검사 결과</h1>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <h1 class="text-5xl tracking-tight text-ink-900">
+        {{ isImage ? '이미지 검사 결과' : '검사 결과' }}
+      </h1>
+      <RouterLink
+        v-if="status === 'DONE'"
+        :to="{ name: 'inspection-report', params: { jobId: props.jobId } }"
+        class="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm text-ink-900 transition-colors hover:border-black/20"
+      >
+        검수 리포트 보기
+      </RouterLink>
+    </div>
 
     <!-- 요약 카드 + 필수 문구 확인(차콜 카드). 두 카드 높이를 맞춤 -->
     <div class="grid grid-cols-3 gap-5">
@@ -170,6 +191,7 @@ async function retry() {
         </button>
 
         <template v-else-if="canRetry">
+          <p v-if="job?.failureMessage" class="text-sm text-ink-700">{{ job.failureMessage }}</p>
           <p
             v-if="retryFailed"
             role="alert"
@@ -177,7 +199,15 @@ async function retry() {
           >
             다시 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.
           </p>
+          <RouterLink
+            v-if="isImage"
+            :to="{ name: 'inspect', query: { mode: 'image' } }"
+            class="self-start rounded-full bg-primary px-5 py-2.5 text-sm text-white"
+          >
+            이미지 다시 올리기
+          </RouterLink>
           <button
+            v-else
             type="button"
             class="inline-flex items-center gap-2 self-start rounded-full bg-primary px-5 py-2.5 text-sm text-white transition-colors duration-200 enabled:hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="retrying"
@@ -199,11 +229,17 @@ async function retry() {
       </section>
 
       <!-- 1층 결과는 백엔드에서 먼저 계산되므로, 2층 판정이 끝나기 전이라도 도착하면 보여줌 -->
-      <Layer1Panel v-if="job?.layer1" :layer1="job.layer1" />
+      <InputValidationPanel v-if="inputValidation" :validation="inputValidation" />
+      <Layer1Panel v-else-if="legacyLayer1" :layer1="legacyLayer1" />
     </div>
 
+    <ImageInspectionResult
+      v-if="status === 'DONE' && isImage"
+      :key="props.jobId"
+      :job-id="props.jobId"
+    />
     <Layer2Panel
-      v-if="status === 'DONE' && job?.layer2"
+      v-else-if="status === 'DONE' && job?.layer2"
       :layer2="job.layer2"
       :ad-text="job.request.adText"
     />

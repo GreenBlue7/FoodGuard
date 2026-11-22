@@ -1,0 +1,19 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FoodGuard 리포트 열기</title>
+<style nonce="__NONCE__">body{font:13px/1.8 system-ui,sans-serif;color:#2c3339;background:#e9e9e7;max-width:1050px;padding:24px;margin:0 auto}h1{font-size:1.15rem;font-weight:600}label{display:block;margin:12px 0}input{box-sizing:border-box;width:100%;max-width:420px;font:inherit;padding:10px}button,.action{font:inherit;display:inline-block;padding:8px 14px;margin:6px 8px 6px 0;border:1px solid #b7c4ce;border-radius:0;color:#21394e;background:white;text-decoration:none;cursor:pointer}iframe{width:100%;height:1100px;border:1px solid #cfd9e1;background:white}#message{white-space:pre-wrap}#login{max-width:460px}[hidden]{display:none!important}</style></head><body>
+<h1>검수 리포트 #__REPORT_ID__</h1><p id="message" role="status" aria-live="polite">본인 계정으로 로그인하면 검사 당시 리포트를 확인할 수 있습니다.</p>
+<form id="login"><label>이메일<input id="email" type="email" autocomplete="username" required></label><label>비밀번호<input id="password" type="password" autocomplete="current-password" required></label><button>로그인하고 리포트 열기</button></form>
+<section id="ready" hidden><p>중요한 지적을 먼저 확인하세요. 새 창에서는 인쇄하거나 PDF로 저장할 수 있습니다.</p>
+<a id="view" class="action" target="_blank" rel="noopener">리포트 새 창에서 보기 · 인쇄</a><a id="download" class="action">HTML 파일 저장</a><button id="logout">로그아웃</button>
+<iframe id="preview" title="검수 리포트 미리보기" sandbox="allow-scripts allow-modals allow-popups allow-popups-to-escape-sandbox"></iframe></section>
+<script nonce="__NONCE__">
+(()=>{const id=__REPORT_ID__;const el=id=>document.getElementById(id);let token=null,url=null;
+async function request(path,method='GET',body){const headers={};if(token)headers.Authorization='Bearer '+token;if(body)headers['Content-Type']='application/json';const response=await fetch(path,{method,headers,body:body?JSON.stringify(body):undefined});
+if(!response.ok){let data=null;try{data=await response.json();}catch{}throw Error(data?.detail||data?.message||'요청을 완료하지 못했습니다 ('+response.status+')');}return response;}
+el('login').addEventListener('submit',async event=>{event.preventDefault();const button=el('login').querySelector('button');button.disabled=true;el('message').textContent='저장된 검사 결과를 불러오고 있습니다.';
+try{const response=await request('/api/auth/login','POST',{email:el('email').value,password:el('password').value});token=(await response.json()).accessToken;el('password').value='';
+const html=await(await request('/api/inspections/'+id+'/report')).text();if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'}));
+el('preview').srcdoc=html;el('view').href=url;el('download').href=url;el('download').download='foodguard-inspection-'+id+'.html';el('login').hidden=true;el('ready').hidden=false;el('message').textContent='검사 당시 저장된 결과입니다. 새 AI 검수는 실행하지 않았습니다.';}
+catch(error){token=null;el('message').textContent=error.message;}finally{button.disabled=false;}});
+el('logout').addEventListener('click',async()=>{try{await request('/api/auth/logout','POST');}catch{}token=null;if(url)URL.revokeObjectURL(url);url=null;el('preview').removeAttribute('srcdoc');el('ready').hidden=true;el('login').hidden=false;el('message').textContent='로그아웃했습니다. 저장하거나 인쇄한 문서는 별도로 관리해 주세요.';});
+})();
+</script></body></html>

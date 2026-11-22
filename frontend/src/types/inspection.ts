@@ -32,13 +32,36 @@ export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'TIMEOUT'
 export type ProductInfoSource = 'MFDS' | 'USER_DECLARED' | 'UNVERIFIED'
 
 export interface InspectionJob {
+  inspectionKind?: 'IMAGE'
+  failureMessage?: string | null
+  productSnapshot?: { judgeProduct?: { names?: string[] } }
   jobId: string
   status: JobStatus
   createdAt: string // ISO 8601 형식
   request: InspectionRequest // 검사에 쓴 요청. 결과 화면의 원문 표시와 재시도에 사용
   productInfoSource: ProductInfoSource
-  layer1: Layer1Result | null // RUNNING 중에도 올 수 있음
+  layer1: Layer1Result | InputValidationResult | null // RUNNING 중에도 올 수 있음
   layer2: Layer2Result | null // DONE일 때만
+}
+
+export interface ImageLocation {
+  page: number
+  box: [number, number, number, number]
+}
+
+export interface ImageInspectionResult {
+  pages: { index: number; imageIndex: number; width: number; height: number; image: string }[]
+  results: {
+    sentenceIds: string[]
+    mark: 'VIOLATION' | 'REVIEW' | 'HOLD' | 'APPROVED' | null
+    number: number | null
+    reason: string
+    revision: string | null
+    locations: ImageLocation[]
+  }[]
+  sentences: { id: string; text: string }[]
+  excludedLines: (ImageLocation & { text: string; reason: string })[]
+  unreadRegions: { page: number; top: number; bottom: number }[]
 }
 
 // 원문 안의 위치
@@ -56,6 +79,7 @@ export interface Layer1Item {
 }
 
 export interface Layer1Result {
+  kind?: 'MANDATORY_PHRASES'
   appliedProductType: ProductType // 어떤 규칙 세트를 적용했는지
   // 빈 배열이면 확인할 필수 문구가 없는 제품 종류
   items: Layer1Item[]
@@ -119,4 +143,20 @@ export interface InspectionHistoryItem {
   productName: string | null
   adTextPreview: string
   createdAt: string
+  countsAvailable: boolean
+  violationCount: number | null
+  reviewCount: number | null
+  dataAsOf: string | null
+  previousJobId: string | null
+}
+
+// New layer1: request readiness only. Legacy phrase-check results remain readable.
+export interface InputValidationResult {
+  kind: 'INPUT_VALIDATION'
+  status: 'PASSED' | 'REJECTED'
+  checkedAt: string
+  characterCount: number | null
+  maxCharacters: number
+  checks: { code: string; label: string; passed: boolean }[]
+  notices: string[]
 }

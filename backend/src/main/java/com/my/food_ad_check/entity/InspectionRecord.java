@@ -37,6 +37,13 @@ public class InspectionRecord {
     @Column(nullable = false)
     private String status;
 
+    @Column(name = "request_fingerprint", length = 64)
+    private String requestFingerprint;
+
+    public void identifyRequest(String fingerprint) { this.requestFingerprint = fingerprint; }
+
+    public void setExtractedAdText(String text) { this.adText = text; }
+
     @Column(name = "result_json", nullable = false, columnDefinition = "TEXT")
     private String resultJson;
 
@@ -47,6 +54,23 @@ public class InspectionRecord {
     // 회원이 삭제되면 DB의 ON DELETE CASCADE로 이 기록도 삭제
     @Column(name = "user_id", nullable = false)
     private Long userId;
+
+    @Column(name = "previous_inspection_id")
+    private Long previousInspectionId;
+
+    public Long getPreviousInspectionId() { return previousInspectionId; }
+
+    public void finish(String status, String resultJson) {
+        if (!java.util.Set.of("DONE", "FAILED", "TIMEOUT").contains(status)) {
+            throw new IllegalArgumentException("Invalid terminal inspection status");
+        }
+        this.status = status;
+        this.resultJson = resultJson;
+    }
+
+    public void linkToPreviousInspection(Long previousInspectionId) {
+        this.previousInspectionId = previousInspectionId;
+    }
 
     protected InspectionRecord() {
     }

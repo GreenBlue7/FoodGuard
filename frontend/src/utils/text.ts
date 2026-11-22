@@ -1,5 +1,7 @@
 import type { TextRange } from '@/types/inspection'
 
+export const MAX_AD_TEXT_CHARACTERS = 3000
+
 interface TextSegment {
   text: string
   range: TextRange

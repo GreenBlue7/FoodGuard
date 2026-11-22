@@ -11,6 +11,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface InspectionRecordRepository extends JpaRepository<InspectionRecord, Long> {
 
+    Optional<InspectionRecord> findFirstByUserIdAndPrdlstReportNoOrderByCreatedAtDescIdDesc(Long userId, String reportNo);
+
+    @org.springframework.data.jpa.repository.Query(
+            "select distinct r.userId from InspectionRecord r where r.prdlstReportNo = :reportNo")
+    java.util.List<Long> findInspectingUserIds(@org.springframework.data.repository.query.Param("reportNo") String reportNo);
+
     // 소유자 조건을 쿼리에 넣어서, 남의 기록은 처음부터 조회되지 않게
     Optional<InspectionRecord> findByIdAndUserId(Long id, Long userId);
 
@@ -29,5 +35,9 @@ public interface InspectionRecordRepository extends JpaRepository<InspectionReco
         String getAdText();
 
         LocalDateTime getCreatedAt();
+
+        String getResultJson();
+
+        Long getPreviousInspectionId();
     }
 }

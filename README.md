@@ -1,10 +1,14 @@
+> 통합 안내: 새 DB는 최신 migration과 시드를 자동 적재합니다. 기존 이력 없는 DB는 자동 변환하지 않으며 안전하게 중단합니다. 자세한 내용은 [전체 실행 통합 안내](backend/FULL_STACK_INTEGRATION.md)를 참고하세요.
+
 ## Docker로 전체 실행하기
 
 ### 1 `.env` 준비
 
-루트의 `.env` 에 `.env.example`을 복사한 뒤 다음 값들을 채우기 
+루트의 `.env` 에 `.env.example`을 복사한 뒤 다음 값들을 채우기
 
-- `GEMINI_API_KEY`: Google AI Studio에서 발급
+- Google 직접 호출: `LLM_PROVIDER=gemini`, `GEMINI_API_KEY` 설정
+- OpenRouter 경유: `LLM_PROVIDER=openrouter`, `OPENROUTER_API_KEY` 설정
+- 두 방식 모두 `GEMINI_MODEL`을 설정하며 키는 커밋하지 않습니다.
 - `JWT_SECRET`: `openssl rand -base64 32`의 출력값
 
 ### 2 실행
@@ -21,7 +25,8 @@ docker compose --profile full up -d --build
 1. http://localhost:8080 접속
 2. 회원가입
 3. 제품 검색(예: `홍삼`) → 광고 문구 입력 → 검사
-4. 판정은 Gemini를 여러 번 호출해서 수십 초에서 1분 정도 소요 
+4. 접수 즉시 번호표를 받고 대기·진행·완료 상태를 조회합니다. 검사 안에서 LLM을 여러 번 호출할 수 있습니다.
+5. 입력은 공백·줄바꿈 포함 최대 3,000자이며 여러 검사는 최대 3건을 목록으로 접수합니다.
 
 ### 4 종료
 
@@ -62,7 +67,7 @@ cd backend && ./gradlew bootRun         # 8080. Windows는 gradlew.bat bootRun
 cd frontend && npm ci && npm run dev    # http://localhost:5173
 ```
 - DB 볼륨을 새로 만들면 제품과 사례 시드가 자동으로 들어감. 식약처 API 키와 적재 작업은 필요X
-- 사례 CSV(`judge/data/`)를 바꾸면 시드(`judge/sql/seed_cases.sql.gz`)를 다시 생성 
+- 사례 CSV(`judge/data/`)를 바꾸면 시드(`judge/sql/seed_cases.sql.gz`)를 다시 생성
 
 백엔드는 반드시 `backend` 폴더에서 실행해야 루트의 `.env`를 읽음
 
@@ -108,7 +113,7 @@ DB를 새로 만들 때 들어가는 데이터는 두 파일. 원본 데이터�
    docker compose exec db psql -U postgres -d foodguard -c "UPDATE users SET role = 'ADMIN' WHERE email = '가입한 이메일';"
    ```
 
-4. 다시 로그인해서 JWT토큰 받기. 권한은 토큰을 발급할 때 정해지므로 권한을 바꾼 뒤 새로 받아야 함 
+4. 다시 로그인해서 JWT토큰 받기. 권한은 토큰을 발급할 때 정해지므로 권한을 바꾼 뒤 새로 받아야 함
 
    ```bash
    curl -s -X POST http://localhost:8080/api/auth/login -H 'Content-Type: application/json' -d '{"email":"가입한 이메일","password":"비밀번호"}'

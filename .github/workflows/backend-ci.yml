@@ -5,15 +5,19 @@ on:
     branches: [develop, main]
     paths: # paths필터 --> 프론트만 바꾼 PR에서 백엔드 빌드가 돌지 않도록 하여 시간 절약
       - "backend/**"
+      - "deploy/migrate.sh"
+      - "judge/sql/cases.sql"
       - ".github/workflows/backend-ci.yml"
   push:
     branches: [develop, main]
     paths:
       - "backend/**"
+      - "deploy/migrate.sh"
+      - "judge/sql/cases.sql"
       - ".github/workflows/backend-ci.yml"
   workflow_dispatch: # Actions 탭에서 버튼으로 직접 실행할 수 있게 해줌
 
-# 레포에 접근할 수 있는 임시 토큰. 이 CI는 코드를 받아서 빌드만 해서 쓰기 권한 필요 X
+# 빌드·테스트에 저장소 쓰기 권한이나 운영 비밀키는 필요하지 않음.
 permissions:
   contents: read
 
@@ -27,7 +31,32 @@ jobs:
     name: Compile / Package
     runs-on: ubuntu-latest
     # 의존성 첫 다운로드가 있어 프론트보다 조금 넉넉하게
-    timeout-minutes: 15
+    timeout-minutes: 20
+    # CI 전용 빈 DB. 운영/개발 DB나 실제 API 키를 사용하지 않는다.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: foodguard_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d foodguard_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DB_URL: jdbc:postgresql://127.0.0.1:5432/foodguard_ci
+      DB_USERNAME: postgres
+      DB_PASSWORD: ci-only-password
+      # 공개된 테스트용 값. 운영에서는 사용하지 않는다.
+      JWT_SECRET: Zm9vZGd1YXJkLWNpLW9ubHktbm90LWZvci1wcm9kdWN0aW9u
+      INSPECTION_JOBS_WORKER_ENABLED: "false"
+      FOOD_SAFETY_IMPORT_ENABLED: "false"
+      FOOD_SAFETY_SCHEDULED_REFRESH_ENABLED: "false"
+      NOTIFICATION_EMAIL_ENABLED: "false"
     defaults:
       run:
         # run 스텝은 모두 backend/ 에서 실행
@@ -46,5 +75,29 @@ jobs:
       # 2. wrapper검증: 레포에 커밋된 gradle-wrapper.jar의 체크섬을 Gradle 공식 배포본 목록과 비교 
       - uses: gradle/actions/setup-gradle@v6
 
-      # 컴파일 + 실행 가능한 jar 패키징까지 되는지 검사 (DB 없이 가능)
-      - run: ./gradlew bootJar
+      # 실제 배포 migration runner로 초기화하고 재실행 가능 여부도 검사한다.
+      # 호스트에 psql을 설치하거나 실제 제품/사례 데이터를 적재하지 않는다.
+      - name: Initialize test database
+        env:
+          POSTGRES_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          docker cp db/. "$POSTGRES_CONTAINER_ID:/migrations"
+          docker cp ../judge/sql "$POSTGRES_CONTAINER_ID:/judge-schema"
+          docker cp ../deploy/migrate.sh "$POSTGRES_CONTAINER_ID:/tmp/foodguard-migrate.sh"
+          docker exec -e PGUSER=postgres -e PGDATABASE=foodguard_ci "$POSTGRES_CONTAINER_ID" sh /tmp/foodguard-migrate.sh
+          docker exec -e PGUSER=postgres -e PGDATABASE=foodguard_ci "$POSTGRES_CONTAINER_ID" sh /tmp/foodguard-migrate.sh
+
+      - name: Run backend tests and package
+        run: ./gradlew clean test bootJar --no-daemon --console=plain
+
+      # 테스트가 실패해도 원인을 확인할 수 있도록 결과만 보관한다.
+      - name: Upload backend test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports
+          path: |
+            backend/build/reports/tests/test/
+            backend/build/test-results/test/*.xml
+          if-no-files-found: warn
+          retention-days: 7

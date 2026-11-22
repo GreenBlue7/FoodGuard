@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.my.food_ad_check.entity.Product;
@@ -24,11 +25,13 @@ class ProductApiServiceTests {
     private ProductApiService productApiService;
     private ProductRepository productRepository;
     private RestTemplate restTemplate;
+    private ProductImportWriter importWriter;
 
     @BeforeEach
     void setUp() {
         productRepository = mock(ProductRepository.class);
         restTemplate = mock(RestTemplate.class);
+        importWriter = mock(ProductImportWriter.class);
         productApiService = service("test-key");
     }
 
@@ -80,7 +83,7 @@ class ProductApiServiceTests {
     void retainsShortClaimsAndUnclearUnnumberedLines() {
         assertEquals(List.of("수면", "항산화"), productApiService.parsePrimaryFnclty(
                 "수면에 도움을 줄 수 있음\n항산화에 도움을 줄 수 있음"));
-        assertEquals(List.of("테아닌", "스트레스로 인한 긴장완화"),
+        assertEquals(List.of("스트레스로 인한 긴장완화"),
                 productApiService.parsePrimaryFnclty(
                         "테아닌\n스트레스로 인한 긴장완화에 도움을 줄 수 있음"));
         assertEquals(List.of("근육, 결합조직 등 신체조직의 구성성분", "에너지 생성에 필요"),
@@ -142,11 +145,11 @@ class ProductApiServiceTests {
 
         assertTrue(result.contains("저장 1건"));
         assertTrue(result.contains("제외 1건"));
-        verify(productRepository).saveAll(any());
+        verify(importWriter).savePage(any(), any());
     }
 
     @Test
-    void repeatImportPreservesReviewedFunctionsWhenSourceChanges() {
+    void repeatImportRefreshesFunctionsFromChangedSource() {
         Product existing = new Product();
         existing.setPrdlstReportNo("R-001");
         existing.setPrdlstNm("옛 이름");
@@ -163,13 +166,20 @@ class ProductApiServiceTests {
         String result = productApiService.loadAllProductData();
 
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<Iterable<Product>> saved = ArgumentCaptor.forClass(Iterable.class);
-        verify(productRepository).saveAll(saved.capture());
+        ArgumentCaptor<List<Product>> saved = ArgumentCaptor.forClass(List.class);
+        verify(importWriter).savePage(saved.capture(), any());
         Product reimported = saved.getValue().iterator().next();
         assertEquals("새 이름", reimported.getPrdlstNm());
         assertEquals("새로운 기능에 도움을 줄 수 있음", reimported.getPrimaryFnclty());
-        assertEquals(List.of("수동 확인한 기능"), reimported.getApprovedFunctions());
-        assertTrue(result.contains("검토 필요) 1건"));
+        assertEquals(List.of("새로운 기능"), reimported.getApprovedFunctions());
+        assertTrue(result.contains("목록 자동 갱신) 1건"));
+        assertTrue(!reimported.isFunctionSourceReviewRequired());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<com.my.food_ad_check.entity.ProductFunctionChange>> changes = ArgumentCaptor.forClass(List.class);
+        verify(importWriter).savePage(any(), changes.capture());
+        assertEquals(1, changes.getValue().size());
+        assertEquals("옛 원문", changes.getValue().get(0).getPreviousSource());
+        assertEquals("새로운 기능에 도움을 줄 수 있음", changes.getValue().get(0).getCurrentSource());
     }
 
     @Test
@@ -210,7 +220,141 @@ class ProductApiServiceTests {
     }
 
     private ProductApiService service(String apiKey) {
-        return new ProductApiService(productRepository, restTemplate, apiKey,
+        return new ProductApiService(productRepository, importWriter, restTemplate, apiKey,
                 "https://example.test/api/");
+    }
+
+    @Test
+    void failedExtractionClearsOldFunctionsInsteadOfUsingStaleClaims() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R1");
+        existing.setPrimaryFnclty("옛 원문");
+        existing.setApprovedFunctions(List.of("과거 기능"));
+        when(productRepository.findById("R1")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"R1","PRDLST_NM":"제품","PRIMARY_FNCLTY":""}]}}
+                """);
+        productApiService.loadAllProductData();
+        assertTrue(existing.getApprovedFunctions().isEmpty());
+        assertTrue(existing.isFunctionSourceReviewRequired());
+        verify(importWriter).savePage(any(), any());
+    }
+
+    @Test
+    void missingSourceFieldDoesNotGenerateAFalseChangeOrAdvanceCheckpoint() {
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"R1","PRDLST_NM":"제품"}]}}
+                """);
+        assertTrue(!productApiService.importSince(java.time.LocalDate.of(2026, 11, 9)).completed());
+        verifyNoInteractions(importWriter);
+    }
+
+    @Test
+    void previouslyBlockedProductCanRecoverAutomaticallyWithoutNewSourceChange() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R1");
+        existing.setPrimaryFnclty("피로개선에 도움을 줄 수 있음");
+        existing.setFunctionSourceReviewRequired(true);
+        when(productRepository.findById("R1")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"R1","PRDLST_NM":"제품",
+                 "PRIMARY_FNCLTY":"피로개선에 도움을 줄 수 있음"}]}}
+                """);
+        productApiService.loadAllProductData();
+        assertEquals(List.of("피로개선"), existing.getApprovedFunctions());
+        assertTrue(!existing.isFunctionSourceReviewRequired());
+        verify(importWriter).savePage(any(), eq(List.of()));
+    }
+
+    @Test
+    void incrementalNoDataIsSuccessfulAndUsesDocumentedDatePath() {
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"RESULT":{"CODE":"INFO-200","MSG":"해당하는 데이터가 없습니다."}}}
+                """);
+        var outcome = productApiService.importSince(java.time.LocalDate.of(2026, 11, 9));
+        assertTrue(outcome.completed());
+        var uri = ArgumentCaptor.forClass(URI.class);
+        verify(restTemplate).getForObject(uri.capture(), eq(String.class));
+        assertTrue(uri.getValue().getPath().endsWith("/I0030/json/1/1000/CHNG_DT=20261109"));
+        verifyNoInteractions(importWriter);
+    }
+
+    @Test
+    void unchangedProductIsNotWrittenAgain() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R1");
+        existing.setPrdlstNm("제품");
+        existing.setBsshNm("제조사");
+        existing.setProductType("건강기능식품");
+        existing.setPrimaryFnclty("기능성");
+        when(productRepository.findById("R1")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"R1","PRDLST_NM":"제품",
+                 "BSSH_NM":"제조사","PRIMARY_FNCLTY":"기능성"}]}}
+                """);
+        assertTrue(productApiService.importSince(java.time.LocalDate.of(2026, 11, 9)).completed());
+        verifyNoInteractions(importWriter);
+    }
+
+    @Test
+    void detailOnlyChangeIsSavedWithoutAFalseFunctionChange() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R1");
+        existing.setPrdlstNm("제품");
+        existing.setBsshNm("제조사");
+        existing.setProductType("건강기능식품");
+        existing.setPrimaryFnclty("기능성");
+        existing.setCautionsSource("옛 주의사항");
+        when(productRepository.findById("R1")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"R1","PRDLST_NM":"제품",
+                 "BSSH_NM":"제조사","PRIMARY_FNCLTY":"기능성","IFTKN_ATNT_MATR_CN":"새 주의사항",
+                 "RAWMTRL_NM":"홍삼","NTK_MTHD":"1일 1회","INDIV_RAWMTRL_NM":"전분",
+                 "ETC_RAWMTRL_NM":"쌀","CAP_RAWMTRL_NM":"젤라틴","STDR_STND":"규격"}]}}
+                """);
+        assertTrue(productApiService.importSince(java.time.LocalDate.of(2026, 11, 9)).completed());
+        assertEquals("새 주의사항", existing.getCautionsSource());
+        assertEquals("홍삼", existing.getIngredientsSource());
+        assertEquals("규격", existing.getStandards());
+        verify(importWriter).savePage(eq(List.of(existing)), eq(List.of()));
+    }
+
+    @Test
+    void skippedRowsPreventWatermarkAdvancement() {
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"1","row":[{"PRDLST_REPORT_NO":"","PRDLST_NM":"누락"}]}}
+                """);
+        assertTrue(!productApiService.importSince(java.time.LocalDate.of(2026, 11, 9)).completed());
+        verifyNoInteractions(importWriter);
+    }
+
+    @Test
+    void laterPageFailureDoesNotMarkPartialImportCompleted() {
+        String row = "{\"PRDLST_REPORT_NO\":\"R1\",\"PRDLST_NM\":\"제품\",\"PRIMARY_FNCLTY\":\"기능\"}";
+        String firstPage = "{\"I0030\":{\"total_count\":\"1001\",\"row\":["
+                + String.join(",", java.util.Collections.nCopies(1000, row)) + "]}}";
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn(firstPage,
+                "{\"I0030\":{\"RESULT\":{\"CODE\":\"ERROR-500\",\"MSG\":\"서버 오류\"}}}");
+        var outcome = productApiService.importSince(java.time.LocalDate.of(2026, 11, 9));
+        assertTrue(!outcome.completed());
+        verify(importWriter).savePage(any(), any());
+        var uri = ArgumentCaptor.forClass(URI.class);
+        verify(restTemplate, org.mockito.Mockito.times(2)).getForObject(uri.capture(), eq(String.class));
+        assertTrue(uri.getAllValues().get(1).getPath().endsWith("/1001/2000/CHNG_DT=20261109"));
+    }
+
+    @Test
+    void unchangedSourceAndNewProductsDoNotProduceChangeEvents() {
+        Product existing = new Product();
+        existing.setPrdlstReportNo("R-001");
+        existing.setPrimaryFnclty("동일 원문");
+        when(productRepository.findById("R-001")).thenReturn(Optional.of(existing));
+        when(restTemplate.getForObject(any(URI.class), eq(String.class))).thenReturn("""
+                {"I0030":{"total_count":"2","row":[
+                 {"PRDLST_REPORT_NO":"R-001","PRDLST_NM":"기존 제품","PRIMARY_FNCLTY":"동일 원문"},
+                 {"PRDLST_REPORT_NO":"R-002","PRDLST_NM":"새 제품","PRIMARY_FNCLTY":"새 기능"}]}}
+                """);
+        productApiService.loadAllProductData();
+        verify(importWriter).savePage(any(), eq(List.of()));
     }
 }

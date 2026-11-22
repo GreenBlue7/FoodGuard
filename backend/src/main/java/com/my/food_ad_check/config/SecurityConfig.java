@@ -26,6 +26,9 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 기본은 로그인 필요. 로그인 없이 쓸 수 있는 주소만 명시적으로 연다
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.GET, "/reports/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/email/settings", "/email/verify", "/email/notifications/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/email/verify").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login").permitAll()
                         // Access Token이 만료된 상태에서 부르는 API라 토큰 없이 연다. 대신 Refresh Token 쿠키로 확인
                         .requestMatchers(HttpMethod.POST, "/api/auth/refresh", "/api/auth/logout").permitAll()
@@ -33,6 +36,7 @@ public class SecurityConfig {
                         .requestMatchers("/error").permitAll()
                         // 식약처 데이터 적재 등 관리용 API. USER가 호출하면 403
                         .requestMatchers("/api/data/**").hasRole("ADMIN")
+                        .requestMatchers("/api/operations/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 // "Authorization: Bearer <JWT>"를 JwtDecoder 빈으로 검증한다. 토큰이 없거나 잘못되면 401
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
