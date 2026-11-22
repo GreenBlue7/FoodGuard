@@ -19,6 +19,11 @@ RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(
 # Fail the build here, not at the first inspection, if a required file was not downloaded
 RUN HF_HUB_OFFLINE=1 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3')"
 
+# Bake the Korean OCR model for image inspection (box positions) so the first image does not wait for a download.
+# Only text_locate.py is copied here, so other code changes do not re-download it
+COPY app/text_locate.py ./app/text_locate.py
+RUN python -c "import sys; sys.path.insert(0, 'app'); import text_locate; text_locate.warm_up()"
+
 # Never contact Hugging Face at runtime: no rate-limit warnings and no background downloads
 ENV HF_HUB_OFFLINE=1
 
