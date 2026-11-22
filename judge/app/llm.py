@@ -6,6 +6,7 @@
 import base64
 import json
 import os
+import threading
 import time
 from typing import TypeVar
 
@@ -19,13 +20,17 @@ from app.config import GEMINI_API_KEY, GEMINI_MODEL, LLM_PROVIDER, OPENROUTER_AP
 T = TypeVar("T", bound=BaseModel)
 Image = tuple[bytes, str]  # (이미지 내용, "image/jpeg" 같은 형식)
 
-_RETRY_CODES = {408, 429, 500, 502, 503}  # 시간 초과, 한도 초과, 서버 오류, 일시적 과부하
+_RETRY_CODES = {408, 429, 500, 502, 503, 504}  # 시간 초과, 한도 초과, 서버 오류, 일시적 과부하
 _MAX_TRIES = 3
 _TIMEOUT_SECONDS = 180  # 연결이 끊겨도 무한정 기다리지 않도록 한 번 호출에 최대 3분
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 _gemini_client: genai.Client | None = None
 _openrouter_client: httpx.Client | None = None
+# 여러 스레드가 동시에 처음 부를 때 클라이언트를 하나만 만들도록 잠근다.
+# 둘 이상 만들어지면 전역 변수에 남지 못한 클라이언트가 정리되면서, 그것으로 보내던 요청이 "client has been closed" 로 실패한다
+_client_lock = threading.Lock()
+_usage_lock = threading.Lock()  # 동시에 부를 때 토큰 기록 줄이 섞이지 않게
 
 
 class LlmError(Exception):
@@ -43,24 +48,26 @@ class _CallError(Exception):
 
 def _get_gemini() -> genai.Client:
     global _gemini_client
-    if _gemini_client is None:
-        if not GEMINI_API_KEY or not GEMINI_MODEL:
-            raise LlmError(".env에 GEMINI_API_KEY, GEMINI_MODEL이 없습니다.")
-        _gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY, http_options=types.HttpOptions(timeout=_TIMEOUT_SECONDS * 1000)
-        )
-    return _gemini_client
+    with _client_lock:
+        if _gemini_client is None:
+            if not GEMINI_API_KEY or not GEMINI_MODEL:
+                raise LlmError(".env에 GEMINI_API_KEY, GEMINI_MODEL이 없습니다.")
+            _gemini_client = genai.Client(
+                api_key=GEMINI_API_KEY, http_options=types.HttpOptions(timeout=_TIMEOUT_SECONDS * 1000)
+            )
+        return _gemini_client
 
 
 def _get_openrouter() -> httpx.Client:
     global _openrouter_client
-    if _openrouter_client is None:
-        if not OPENROUTER_API_KEY or not GEMINI_MODEL:
-            raise LlmError(".env에 OPENROUTER_API_KEY, GEMINI_MODEL이 없습니다.")
-        _openrouter_client = httpx.Client(
-            timeout=_TIMEOUT_SECONDS, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-        )
-    return _openrouter_client
+    with _client_lock:
+        if _openrouter_client is None:
+            if not OPENROUTER_API_KEY or not GEMINI_MODEL:
+                raise LlmError(".env에 OPENROUTER_API_KEY, GEMINI_MODEL이 없습니다.")
+            _openrouter_client = httpx.Client(
+                timeout=_TIMEOUT_SECONDS, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+            )
+        return _openrouter_client
 
 
 def openrouter_model(model: str) -> str:
@@ -111,7 +118,7 @@ def _log_usage(model: str, input_tokens: int, output_tokens: int, thinking_token
     }
     if cost is not None:
         record["cost"] = cost  # OpenRouter 가 알려 주는 실제 청구 금액($)
-    with open(path, "a", encoding="utf-8") as f:
+    with _usage_lock, open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record) + "\n")
 
 

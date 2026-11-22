@@ -5,5 +5,10 @@ httpx>=0.28,<1
 python-dotenv
 sentence-transformers
 psycopg[binary]
+pillow>=10.1  # 이미지 검사: 자르기·박스 그리기
+numpy  # 이미지 검사: 박스를 실제 글자 위치에 맞출 때 (torch 와 함께 이미 설치됨)
+python-multipart  # 이미지 검사: FastAPI 가 파일 업로드를 받을 때 필요
+rapidocr==3.10.0  # 이미지 검사: 박스 위치를 찾는 로컬 OCR (PaddleOCR 모델). 모델 내려받는 주소가 버전에 묶여 있어 고정
+onnxruntime  # rapidocr 가 모델을 돌릴 때 필요
 pgvector
 pytest

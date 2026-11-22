@@ -150,7 +150,8 @@ def test_문장이_많으면_나눠서_보내고_결과는_원래_순서로_합�
     response = run("A", ad="\n".join(f"{n}번째 문장입니다" for n in range(1, count + 1)))
     assert len(fake["prompts"]) == 3
     asked = [len(re.findall(r"^\[s\d+\]", p.split("# 검토할 문장")[1], flags=re.M)) for p in fake["prompts"]]
-    assert asked == [pipeline.BATCH_SIZE, pipeline.BATCH_SIZE, 5]
+    # 묶음을 동시에 보내므로 불리는 순서는 매번 다를 수 있다. 결과는 아래처럼 원래 순서로 합쳐진다
+    assert sorted(asked) == [5, pipeline.BATCH_SIZE, pipeline.BATCH_SIZE]
     assert [r.reason for r in response.results] == [f"s{n} 의 이유" for n in range(1, count + 1)]
     assert all(r.status is Status.OK for r in response.results)
 
