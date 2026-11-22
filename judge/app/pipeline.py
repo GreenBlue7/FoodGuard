@@ -34,6 +34,7 @@ from app.schemas import (
 from app.splitter import split_sentences
 from app.tagger import Tag, TagType, tag_sentence
 from app.page_rules import apply_page_rules
+from app.parallel import ordered_map
 from app.verifier import VerifyContext, is_approved_wording, verify
 
 logger = logging.getLogger("judge")
@@ -78,11 +79,11 @@ _DOWNGRADE_LABEL = {
 }
 
 
-def _confirm_violations(sentences: list[Sentence], results: dict[str, JudgeResult], product: Product) -> None:
-    """위반 판정을 엄격한 기준으로 다시 확인한다. 위반을 내리기만 하고, 올리거나 OK 로 바꾸지는 않는다."""
+def _confirm_prompts(sentences: list[Sentence], results: dict[str, JudgeResult], product: Product) -> tuple[set[str], list[str]]:
+    """위반 판정을 엄격한 기준으로 다시 확인할 질문을 만든다. (확인할 문장 번호, 프롬프트 목록)"""
     flagged = [i for i, s in enumerate(sentences) if results[s.id].status is Status.VIOLATION]
     if not flagged:
-        return
+        return set(), []
     blocks = []
     for i in flagged:
         sentence = sentences[i]
@@ -91,17 +92,22 @@ def _confirm_violations(sentences: list[Sentence], results: dict[str, JudgeResul
         blocks.append(
             f"[{sentence.id}] {sentence.text}\n  앞: {before}\n  뒤: {after}\n  1차 판정 이유: {results[sentence.id].reason}"
         )
-    items = []
+    prompts = []
     # 같은 입력에도 답이 흔들리므로 순서를 바꿔 여러 번 묻고, 한 번이라도 단정하기 어렵다고 하면 낮춘다
     for run in range(CONFIRM_RUNS):
         ordered = blocks if run % 2 == 0 else blocks[::-1]
         for first in range(0, len(ordered), BATCH_SIZE):
-            prompt = _PROMPT_CONFIRM.replace("{{PRODUCT}}", _product_block(product)).replace(
-                "{{ITEMS}}", "\n".join(ordered[first : first + BATCH_SIZE])
+            prompts.append(
+                _PROMPT_CONFIRM.replace("{{PRODUCT}}", _product_block(product)).replace(
+                    "{{ITEMS}}", "\n".join(ordered[first : first + BATCH_SIZE])
+                )
             )
-            items.extend(generate_json(prompt, ConfirmOutput, model=STRONG_MODEL).items)
-    flagged_ids = {sentences[i].id for i in flagged}
-    for item in items:
+    return {sentences[i].id for i in flagged}, prompts
+
+
+def _apply_confirm(results: dict[str, JudgeResult], flagged_ids: set[str], outputs: list[ConfirmOutput]) -> None:
+    """위반 확인 답을 반영한다. 위반을 내리기만 하고, 올리거나 OK 로 바꾸지는 않는다."""
+    for item in (item for output in outputs for item in output.items):
         if item.sentence_id not in flagged_ids or item.decision is Downgrade.KEEP:
             continue  # 답이 빠진 문장은 1차 판정을 그대로 둔다
         if results[item.sentence_id].status is not Status.VIOLATION:
@@ -152,8 +158,8 @@ _BODY = re.compile(
 )
 
 
-def _recheck_ok(sentences: list[Sentence], results: dict[str, JudgeResult], product: Product) -> None:
-    """1차에서 정상으로 나온 위험 신호 문장을 다시 본다. 검토 필요로 올리기만 하고, 위반으로 올리지는 않는다."""
+def _recheck_prompts(sentences: list[Sentence], results: dict[str, JudgeResult], product: Product) -> tuple[set[str], list[str]]:
+    """1차에서 정상으로 나온 위험 신호 문장을 다시 볼 질문을 만든다. (다시 볼 문장 번호, 프롬프트 목록)"""
     picked = [
         i for i, s in enumerate(sentences)
         if results[s.id].status is Status.OK
@@ -163,7 +169,7 @@ def _recheck_ok(sentences: list[Sentence], results: dict[str, JudgeResult], prod
         and not (RULES_V2 and is_approved_wording(s.text, product.approved_functions))
     ]
     if not picked:
-        return
+        return set(), []
     blocks = []
     for i in picked:
         sentence = sentences[i]
@@ -171,14 +177,18 @@ def _recheck_ok(sentences: list[Sentence], results: dict[str, JudgeResult], prod
         after = " / ".join(s.text for s in sentences[i + 1 : i + 1 + CONTEXT_SIZE]) or "없음"
         blocks.append(f"[{sentence.id}] {sentence.text}\n  앞: {before}\n  뒤: {after}")
     product_info = _product_block(product) + "\n" + "\n".join(_registry_block(product).splitlines()[1:])
-    items = []
-    for first in range(0, len(blocks), BATCH_SIZE):
-        prompt = _PROMPT_RECHECK.replace("{{PRODUCT}}", product_info).replace(
+    prompts = [
+        _PROMPT_RECHECK.replace("{{PRODUCT}}", product_info).replace(
             "{{ITEMS}}", "\n".join(blocks[first : first + BATCH_SIZE])
         )
-        items.extend(generate_json(prompt, RecheckOutput, model=STRONG_MODEL).items)
-    picked_ids = {sentences[i].id for i in picked}
-    for item in items:
+        for first in range(0, len(blocks), BATCH_SIZE)
+    ]
+    return {sentences[i].id for i in picked}, prompts
+
+
+def _apply_recheck(results: dict[str, JudgeResult], picked_ids: set[str], outputs: list[RecheckOutput]) -> None:
+    """다시 본 답을 반영한다. 검토 필요로 올리기만 하고, 위반으로 올리지는 않는다."""
+    for item in (item for output in outputs for item in output.items):
         if item.sentence_id not in picked_ids or item.decision is Recheck.OK:
             continue
         old = results[item.sentence_id]
@@ -190,6 +200,20 @@ def _recheck_ok(sentences: list[Sentence], results: dict[str, JudgeResult], prod
                 "reason": f"{_RECHECK_LABEL[item.decision]}이라 확인이 필요합니다. {item.reason}",
             }
         )
+
+
+def _second_look(sentences: list[Sentence], results: dict[str, JudgeResult], product: Product) -> None:
+    """위반 다시 확인과 정상 다시 보기를 한꺼번에 동시에 묻고, 위반 확인 → 정상 다시 보기 순서로 반영한다.
+
+    둘을 동시에 물어도 차례로 할 때와 결과가 같다. 위반 확인은 위반을 검토 필요로 내리기만 하고 정상으로 바꾸지 않으므로,
+    다시 볼 정상 문장은 위반 확인 전에 골라도 같다. 두 단계가 바꾸는 문장도 겹치지 않는다 (위반 문장 / 정상 문장).
+    """
+    confirm_ids, confirm_prompts = _confirm_prompts(sentences, results, product) if JUDGE_CONFIRM else (set(), [])
+    recheck_ids, recheck_prompts = _recheck_prompts(sentences, results, product) if JUDGE_RECHECK else (set(), [])
+    jobs = [(prompt, ConfirmOutput) for prompt in confirm_prompts] + [(prompt, RecheckOutput) for prompt in recheck_prompts]
+    outputs = ordered_map(lambda job: generate_json(job[0], job[1], model=STRONG_MODEL), jobs)
+    _apply_confirm(results, confirm_ids, outputs[: len(confirm_prompts)])
+    _apply_recheck(results, recheck_ids, outputs[len(confirm_prompts) :])
 
 
 # 조항 번호는 AI 가 아니라 코드가 붙인다 (지어내지 못하게)
@@ -358,10 +382,11 @@ def run_judge(request: JudgeRequest) -> JudgeResponse:
                 cases = [(hit, True, "") for hit in hits]
             items.append((sentence, tags, cases))
 
+        # 묶음들을 동시에 묻는다. 답은 묶음 순서대로 오므로, 아래 setdefault 는 차례로 물을 때와 같은 답을 남긴다
+        batches = [items[first : first + BATCH_SIZE] for first in range(0, len(items), BATCH_SIZE)]
+        outputs = ordered_map(lambda batch: generate_json(_build_prompt(batch, mode, product), LlmOutput), batches)
         verdicts: dict[str, LlmVerdict] = {}
-        for first in range(0, len(items), BATCH_SIZE):
-            batch = items[first : first + BATCH_SIZE]
-            output = generate_json(_build_prompt(batch, mode, product), LlmOutput)
+        for batch, output in zip(batches, outputs):
             asked = {sentence.id for sentence, _, _ in batch}
             for v in output.verdicts:
                 if v.sentence_id in asked:  # 이번에 묻지 않은 문장에 대한 답은 버린다
@@ -391,12 +416,11 @@ def run_judge(request: JudgeRequest) -> JudgeResponse:
                 sentence, fixed, [hit for hit, _, _ in cases], usable_hits if CASES_AFTER else []
             )
 
-    if JUDGE_CONFIRM and product is not None:
-        _confirm_violations(sentences, results, product)
-    if JUDGE_RECHECK and product is not None:
-        _recheck_ok(sentences, results, product)
+    if product is not None:
+        _second_look(sentences, results, product)
     if JUDGE_FACT and product is not None:
         # 위반 다시 확인 뒤에 한다. 사실 대조로 올린 위반은 근거가 등록 정보·페이지에 있어서 다시 내리지 않는다
+        # 정상 다시 보기 뒤에도 해야 한다. 대조할 정상 문장을 고를 때 정상 다시 보기 결과가 들어간다 (그래서 동시에 묻지 않는다)
         check_facts(sentences, results, product, request.ad_text, model=STRONG_MODEL)
     if RULES_V2 and product is not None:
         # 공식 기준 중 코드로 확인할 수 있는 것 (필수 안내 문구, 등록 원재료와 다른 '단일·오직', 출처 없는 1위)
