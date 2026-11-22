@@ -42,6 +42,8 @@ public class InspectionRecord {
 
     public void identifyRequest(String fingerprint) { this.requestFingerprint = fingerprint; }
 
+    public void setExtractedAdText(String text) { this.adText = text; }
+
     @Column(name = "result_json", nullable = false, columnDefinition = "TEXT")
     private String resultJson;
 

@@ -31,6 +31,7 @@ public final class InspectionRequestFingerprint {
             identity.put("judgeMode", request.mode());
             identity.put("judgeProduct", request.product());
             identity.put("adText", request.adText());
+            if (input.has("imageDigests")) identity.put("imageDigests", input.get("imageDigests"));
             byte[] canonical = JSON.writeValueAsBytes(canonical(JSON.valueToTree(identity)));
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(canonical));
         } catch (Exception invalid) {

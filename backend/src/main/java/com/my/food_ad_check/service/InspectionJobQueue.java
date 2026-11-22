@@ -1,11 +1,13 @@
 package com.my.food_ad_check.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.my.food_ad_check.dto.FastApiRequest;
 import com.my.food_ad_check.entity.InspectionRecord;
 import com.my.food_ad_check.repository.InspectionRecordRepository;
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,23 +21,32 @@ public class InspectionJobQueue {
     private final JdbcTemplate db;
     private final InspectionRecordRepository records;
     private final long leaseMs;
+    private final long imageLeaseMs;
     private final InspectionAdmissionPolicy admission;
     private final ObjectMapper json = new ObjectMapper();
 
     public InspectionJobQueue(JdbcTemplate db, InspectionRecordRepository records,
             @Value("${inspection.jobs.lease-ms:600000}") long leaseMs,
             @Value("${judge.timeout-ms:180000}") long judgeTimeoutMs,
+            @Value("${judge.image-timeout-ms:300000}") long imageTimeoutMs,
             InspectionAdmissionPolicy admission) {
         this.db = db;
         this.records = records;
         this.admission = admission;
         // Connect and read limits are separate. Allow both plus a completion margin.
         this.leaseMs = Math.max(leaseMs, 2 * judgeTimeoutMs + 60000);
+        this.imageLeaseMs = Math.max(leaseMs, 2 * imageTimeoutMs + 60000);
     }
 
     @Transactional
     public InspectionRecord enqueue(InspectionRecord record, FastApiRequest request,
                                      InspectionRecommendations.Draft recommendation) {
+        return enqueue(record, request, recommendation, List.of());
+    }
+
+    @Transactional
+    public InspectionRecord enqueue(InspectionRecord record, FastApiRequest request,
+            InspectionRecommendations.Draft recommendation, List<InspectionImage> images) {
         // Serialize submissions for this account across app instances. No paid call under this lock.
         if (db.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE", Long.class, record.getUserId()).isEmpty()) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -55,6 +66,11 @@ public class InspectionJobQueue {
                 INSERT INTO inspection_job_queue(job_id,judge_request_json,recommendation_json)
                 VALUES(?,?,?)
                 """, saved.getId(), encode(request), recommendation == null ? null : encode(recommendation));
+        for (int position = 0; position < images.size(); position++) {
+            var image = images.get(position);
+            db.update("INSERT INTO inspection_job_images(job_id,position,content_type,content) VALUES(?,?,?,?)",
+                    saved.getId(), position, image.contentType(), image.bytes());
+        }
         admission.recordAccepted(record.getUserId());
         return saved;
     }
@@ -100,15 +116,23 @@ public class InspectionJobQueue {
         if (candidates.isEmpty()) return Optional.empty();
         Claim claim = candidates.get(0);
         db.update("""
-                UPDATE inspection_job_queue SET claim_token=?,lease_until=clock_timestamp()+?*interval '1 millisecond'
+                UPDATE inspection_job_queue SET claim_token=?,lease_until=clock_timestamp()+
+                    CASE WHEN EXISTS (SELECT 1 FROM inspection_job_images i WHERE i.job_id=inspection_job_queue.job_id)
+                        THEN ? ELSE ? END * interval '1 millisecond'
                 WHERE job_id=?
-                """, claim.token(), leaseMs, claim.jobId());
+                """, claim.token(), imageLeaseMs, leaseMs, claim.jobId());
         db.update("UPDATE inspection_records SET status='RUNNING' WHERE id=?", claim.jobId());
         return Optional.of(claim);
     }
 
     @Transactional
     public boolean finish(Claim claim, String status, Map<String, Object> result) {
+        return finish(claim, status, result, null);
+    }
+
+    @Transactional
+    public boolean finish(Claim claim, String status, Map<String, Object> result,
+            JsonNode imageResult) {
         var locked = db.queryForList("""
                 SELECT job_id FROM inspection_job_queue
                 WHERE job_id=? AND claim_token=? AND lease_until>clock_timestamp() FOR UPDATE
@@ -116,9 +140,24 @@ public class InspectionJobQueue {
         if (locked.isEmpty()) return false; // expired/deleted work cannot overwrite a later state
         var record = records.findById(claim.jobId()).orElseThrow();
         record.finish(status, encode(result));
+        if (imageResult != null) {
+            record.setExtractedAdText(imageResult.path("adText").asText());
+            db.update("INSERT INTO inspection_image_results(job_id,result_json) VALUES(?,?)",
+                    claim.jobId(), encode(imageResult));
+        }
         records.saveAndFlush(record);
         db.update("DELETE FROM inspection_job_queue WHERE job_id=? AND claim_token=?", claim.jobId(), claim.token());
         return true;
+    }
+
+    public List<InspectionImage> images(long jobId) {
+        return db.query("SELECT content_type,content FROM inspection_job_images WHERE job_id=? ORDER BY position",
+                (rs, row) -> new InspectionImage(rs.getString("content_type"), rs.getBytes("content"), null), jobId);
+    }
+
+    public Optional<String> imageResult(long jobId) {
+        return db.queryForList("SELECT result_json FROM inspection_image_results WHERE job_id=?", String.class, jobId)
+                .stream().findFirst();
     }
 
     @Transactional

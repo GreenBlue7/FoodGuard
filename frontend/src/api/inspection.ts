@@ -1,5 +1,6 @@
 import type {
   InspectionJob,
+  ImageInspectionResult,
   InspectionRequest,
   Product,
   InspectionHistoryPage,
@@ -20,6 +21,8 @@ const ENDPOINTS = {
 export interface InspectionApi {
   searchProducts(query: string): Promise<Product[]>
   createInspection(req: InspectionRequest): Promise<{ jobId: string }>
+  createImage(req: Omit<InspectionRequest, 'adText'>, images: File[]): Promise<{ jobId: string }>
+  getImageResult(jobId: string): Promise<ImageInspectionResult>
   createBatch(items: InspectionRequest[]): Promise<{ items: { index: number; jobId: string }[] }>
   // 없는 jobId면 NotFoundError(./errors)로 reject
   getJob(jobId: string): Promise<InspectionJob>
@@ -34,6 +37,15 @@ export const inspectionApi: InspectionApi = {
   },
   createInspection(req) {
     return request<{ jobId: string }>(ENDPOINTS.inspections, { method: 'POST', body: req })
+  },
+  createImage(req, images) {
+    const body = new FormData()
+    body.append('request', JSON.stringify(req))
+    for (const image of images) body.append('images', image)
+    return request<{ jobId: string }>(`${ENDPOINTS.inspections}/image`, { method: 'POST', body })
+  },
+  getImageResult(jobId) {
+    return request<ImageInspectionResult>(`${ENDPOINTS.inspection(jobId)}/image-result`)
   },
   createBatch(items) {
     return request<{ items: { index: number; jobId: string }[] }>(

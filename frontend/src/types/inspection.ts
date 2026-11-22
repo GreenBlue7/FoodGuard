@@ -32,6 +32,7 @@ export type JobStatus = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'TIMEOUT'
 export type ProductInfoSource = 'MFDS' | 'USER_DECLARED' | 'UNVERIFIED'
 
 export interface InspectionJob {
+  inspectionKind?: 'IMAGE'
   failureMessage?: string | null
   productSnapshot?: { judgeProduct?: { names?: string[] } }
   jobId: string
@@ -41,6 +42,26 @@ export interface InspectionJob {
   productInfoSource: ProductInfoSource
   layer1: Layer1Result | InputValidationResult | null // RUNNING 중에도 올 수 있음
   layer2: Layer2Result | null // DONE일 때만
+}
+
+export interface ImageLocation {
+  page: number
+  box: [number, number, number, number]
+}
+
+export interface ImageInspectionResult {
+  pages: { index: number; imageIndex: number; width: number; height: number; image: string }[]
+  results: {
+    sentenceIds: string[]
+    mark: 'VIOLATION' | 'REVIEW' | 'HOLD' | 'APPROVED' | null
+    number: number | null
+    reason: string
+    revision: string | null
+    locations: ImageLocation[]
+  }[]
+  sentences: { id: string; text: string }[]
+  excludedLines: (ImageLocation & { text: string; reason: string })[]
+  unreadRegions: { page: number; top: number; bottom: number }[]
 }
 
 // 원문 안의 위치

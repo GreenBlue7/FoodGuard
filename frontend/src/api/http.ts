@@ -4,7 +4,7 @@ import { ApiError, NotFoundError, SessionExpiredError } from './errors'
 
 interface RequestOptions {
   method?: 'GET' | 'POST'
-  body?: unknown // JSON으로 바꿔 보냄
+  body?: unknown // FormData는 그대로 보내고, 다른 본문은 JSON으로 변환
   // false: 로그인·회원가입·갱신처럼 Access Token 없이 보내는 요청. 401이 와도 세션 만료로 보지 않음
   auth?: boolean
   retried?: boolean // 내부용: 갱신 후 다시 보낸 요청이면 true (한 번만 재시도)
@@ -71,7 +71,8 @@ export async function request<T>(
   const headers = new Headers({
     Accept: responseType === 'html' ? 'text/html' : 'application/json',
   })
-  if (body !== undefined) headers.set('Content-Type', 'application/json')
+  const formData = body instanceof FormData ? body : null
+  if (body !== undefined && !formData) headers.set('Content-Type', 'application/json')
 
   // 요청 전에 판단해 둠: 401이 왔을 때 "로그인 상태였는가"로 세션 만료 여부를 가름
   const authStore = useAuthStore()
@@ -87,7 +88,7 @@ export async function request<T>(
     response = await fetch(path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: formData ?? (body === undefined ? undefined : JSON.stringify(body)),
     })
   } catch (error) {
     // 서버에 닿지 못함 (네트워크 끊김, 백엔드가 꺼져 있음 등)

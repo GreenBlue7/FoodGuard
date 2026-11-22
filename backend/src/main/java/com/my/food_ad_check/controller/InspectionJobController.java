@@ -13,6 +13,7 @@ import com.my.food_ad_check.repository.InspectionRecordRepository;
 import com.my.food_ad_check.repository.ProductRepository;
 import com.my.food_ad_check.service.*;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -21,9 +22,12 @@ import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +65,21 @@ public class InspectionJobController {
     public Map<String, String> create(@AuthenticationPrincipal Jwt jwt,
                                       @RequestBody(required = false) InspectionJobRequest request) {
         return createInternal(jwt, request, null);
+    }
+
+    @PostMapping(value = "/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, String> createImage(@AuthenticationPrincipal Jwt jwt,
+            @RequestParam("request") String metadata, @RequestParam("images") List<MultipartFile> uploads)
+            throws IOException {
+        InspectionJobRequest request;
+        try {
+            request = objectMapper.readValue(metadata, InspectionJobRequest.class);
+        } catch (JsonProcessingException e) {
+            throw new InspectionInputException(HttpStatus.BAD_REQUEST, "INVALID_IMAGE_REQUEST",
+                    "제품 정보를 확인하고 이미지를 다시 올려 주세요.", null);
+        }
+        inputValidator.validateImageSelection(request);
+        return createInternal(jwt, request, null, null, List.of(), InspectionImage.read(uploads));
     }
 
     public record BatchRequest(List<InspectionJobRequest> items) { }
@@ -139,6 +158,9 @@ public class InspectionJobController {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "이전 검사 입력 정보를 복원할 수 없습니다.");
             }
             var old = previousResult.path("request");
+            if ("IMAGE".equals(previousResult.path("inspectionKind").asText())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "현재 광고 이미지를 다시 올려 검사해 주세요.");
+            }
             if (old.isMissingNode() || old.isNull()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "이전 검사 입력 정보를 복원할 수 없습니다.");
             }
@@ -167,7 +189,14 @@ public class InspectionJobController {
 
     private Map<String, String> createInternal(Jwt jwt, InspectionJobRequest request, InspectionRecord previous,
             InspectionRecommendations.Draft selectedRecommendation, List<SentenceComparison.Edit> sentenceEdits) {
-        var input = inputValidator.validate(request);
+        return createInternal(jwt, request, previous, selectedRecommendation, sentenceEdits, List.of());
+    }
+
+    private Map<String, String> createInternal(Jwt jwt, InspectionJobRequest request, InspectionRecord previous,
+            InspectionRecommendations.Draft selectedRecommendation, List<SentenceComparison.Edit> sentenceEdits,
+            List<InspectionImage> images) {
+        boolean image = !images.isEmpty();
+        var input = image ? inputValidator.validateImageSelection(request) : inputValidator.validate(request);
         List<String> ids = input.productIds();
         Product product = ids.isEmpty() ? null : productRepository.findById(ids.get(0)).orElse(null);
         inputValidator.validateProduct(product, input.characterCount());
@@ -210,7 +239,11 @@ public class InspectionJobController {
             case "GENERAL_FOOD" -> "GENERAL";
             default -> "UNDETERMINED";
         });
-        result.put("layer1", inputValidator.passed(input.characterCount(), source));
+        result.put("layer1", image ? null : inputValidator.passed(input.characterCount(), source));
+        if (image) {
+            result.put("inspectionKind", "IMAGE");
+            result.put("imageDigests", images.stream().map(InspectionImage::digest).toList());
+        }
         result.put("layer2", null);
         result.put("judgeRequestId", judgeRequestId);
         result.put("judgeResponse", null);
@@ -244,7 +277,8 @@ public class InspectionJobController {
                 sourceSnapshot,
                 adText, status, serialize(result), LocalDateTime.now());
         if (previous != null) record.linkToPreviousInspection(previous.getId());
-        InspectionRecord saved = inspectionJobQueue.enqueue(record, judgeRequest, selectedRecommendation);
+        InspectionRecord saved = image ? inspectionJobQueue.enqueue(record, judgeRequest, null, images)
+                : inspectionJobQueue.enqueue(record, judgeRequest, selectedRecommendation);
         return previous == null ? Map.of("jobId", saved.getId().toString())
                 : Map.of("jobId", saved.getId().toString(), "previousJobId", previous.getId().toString());
     }
@@ -268,11 +302,20 @@ public class InspectionJobController {
             }
             result.put("jobId", jobId);
             result.put("status", record.getStatus());
+            result.remove("imageDigests");
             return result;
         } catch (JsonProcessingException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "저장된 검수 결과를 읽을 수 없습니다.", e);
         }
+    }
+
+    @GetMapping("/{jobId}/image-result")
+    public ResponseEntity<String> imageResult(@AuthenticationPrincipal Jwt jwt, @PathVariable Long jobId) {
+        InspectionRecord record = owned(jwt, jobId);
+        String response = inspectionJobQueue.imageResult(record.getId()).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "완료된 이미지 검사 결과가 없습니다."));
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(response);
     }
 
     @GetMapping("/{jobId}/recommendations")
@@ -308,6 +351,9 @@ public class InspectionJobController {
                 : productRepository.findById(record.getPrdlstReportNo()).orElse(null);
         try {
             Map<String, Object> result = objectMapper.readValue(record.getResultJson(), new TypeReference<>() { });
+            if ("IMAGE".equals(result.get("inspectionKind"))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "이미지 검사는 결과 화면에서 판정을 확인해 주세요.");
+            }
             var snapshot = objectMapper.valueToTree(result.get("productSnapshot"));
             if (current == null || current.isFunctionSourceReviewRequired() || snapshot == null
                     || !snapshot.hasNonNull("version") || current.getVersion() == null

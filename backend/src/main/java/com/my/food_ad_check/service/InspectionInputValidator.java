@@ -19,7 +19,16 @@ public class InspectionInputValidator {
     public Input validate(InspectionJobRequest request) {
         if (request == null) throw new InspectionInputException(HttpStatus.BAD_REQUEST,
                 "INVALID_REQUEST_BODY", "검수할 광고 문구를 입력해 주세요.", null);
-        int count = validateText(request.adText());
+        return validateSelection(request, validateText(request.adText()), request.adText().trim());
+    }
+
+    public Input validateImageSelection(InspectionJobRequest request) {
+        if (request == null) throw new InspectionInputException(HttpStatus.BAD_REQUEST,
+                "INVALID_REQUEST_BODY", "제품 선택 정보를 확인해 주세요.", null);
+        return validateSelection(request, 0, "");
+    }
+
+    private Input validateSelection(InspectionJobRequest request, int count, String text) {
         List<String> ids = request.productIds() == null ? List.of() : request.productIds();
         if (ids.size() > 1 || (ids.size() == 1 && (ids.get(0) == null || ids.get(0).isBlank()))) {
             throw new InspectionInputException(HttpStatus.BAD_REQUEST, "INVALID_PRODUCT_SELECTION",
@@ -31,7 +40,7 @@ public class InspectionInputValidator {
                     "알 수 없는 제품 유형 답변입니다.", count);
         }
         return new Input(ids.isEmpty() ? List.of() : List.of(ids.get(0).trim()),
-                request.productTypeAnswer(), request.adText().trim(), count);
+                request.productTypeAnswer(), text, count);
     }
 
     public static int validateText(String text) {

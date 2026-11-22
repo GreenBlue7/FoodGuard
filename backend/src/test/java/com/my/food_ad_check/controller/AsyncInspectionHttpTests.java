@@ -6,10 +6,13 @@ import com.my.food_ad_check.entity.Product;
 import com.my.food_ad_check.entity.User;
 import com.my.food_ad_check.repository.*;
 import com.my.food_ad_check.service.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -17,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.junit.jupiter.api.Assertions.*;
@@ -105,6 +109,37 @@ class AsyncInspectionHttpTests {
         assertTrue(new InspectionJobWorker(queue, records, products, judge).processOne());
         state(id, "DONE");
         assertEquals("광고 문구.", records.findById(id).orElseThrow().getAdText());
+    }
+
+    @Test void imagePagesAreServedSeparatelyToTheirOwnerAfterQueuedUploadsAreRemoved() throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "PNG", bytes);
+        var image = new MockMultipartFile("images", "ad.png", "image/png", bytes.toByteArray());
+        var auth = jwt().jwt(j -> j.subject(userId.toString()));
+        var metadata = "{\"productIds\":[],\"productTypeAnswer\":\"GENERAL\"}";
+        var submitted = mvc.perform(multipart("/api/inspections/image").file(image).param("request", metadata)
+                        .with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long id = json.readTree(submitted).path("jobId").asLong();
+        String job = "/api/inspections/" + id;
+        mvc.perform(get(job + "/image-result").with(auth)).andExpect(status().isNotFound());
+        assertEquals(1, queue.images(id).size());
+
+        var result = json.readTree("""
+                {"adText":"광고 문구.","pages":[{"index":0}],"excludedLines":[],"unreadRegions":[]}
+                """);
+        when(judge.requestImageJudgmentOutcome(any(), anyList())).thenReturn(
+                new AiJudgmentService.ImageJudgmentOutcome(answer(), result, "DONE", null));
+        assertTrue(worker.processOne());
+        assertTrue(queue.images(id).isEmpty());
+        mvc.perform(get(job).with(auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.inspectionKind").value("IMAGE"))
+                .andExpect(jsonPath("$.request.adText").value("광고 문구."))
+                .andExpect(jsonPath("$.pages").doesNotExist());
+        mvc.perform(get(job + "/image-result").with(auth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.pages[0].index").value(0));
+        mvc.perform(get(job + "/image-result").with(jwt().jwt(j -> j.subject("999999999"))))
+                .andExpect(status().isNotFound());
+        verify(judge, never()).requestJudgmentOutcome(any());
     }
 
     @Test void expiredRunningWorkFailsWithoutReplayingAndRejectsLateCompletion() throws Exception {

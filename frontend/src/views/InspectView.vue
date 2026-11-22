@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { inspectionApi } from '@/api/inspection'
 import { ApiError } from '@/api/errors'
 import { countCodePoints, MAX_AD_TEXT_CHARACTERS } from '@/utils/text'
 import AdTextInput from '@/components/inspect/AdTextInput.vue'
+import ImageInspectionInput from '@/components/inspect/ImageInspectionInput.vue'
 import InspectSteps from '@/components/inspect/InspectSteps.vue'
 import ProductChip from '@/components/product/ProductChip.vue'
 import ProductList from '@/components/product/ProductList.vue'
@@ -76,6 +77,14 @@ const adTextStepDone = computed(
 )
 
 const router = useRouter()
+const route = useRoute()
+const mode = ref<'text' | 'image'>(route.query.mode === 'image' ? 'image' : 'text')
+watch(
+  () => route.query.mode,
+  (value) => {
+    mode.value = value === 'image' ? 'image' : 'text'
+  },
+)
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
 const batchError = ref<string | null>(null)
@@ -137,14 +146,32 @@ async function submit() {
     <div class="flex flex-col gap-6">
       <h1 class="text-5xl tracking-tight text-ink-900">광고 문구 검사</h1>
       <InspectSteps
+        v-if="mode === 'text'"
         :product-done="productStepDone"
         :ad-text-done="adTextStepDone"
         class="max-w-3xl"
       />
     </div>
+    <fieldset class="flex flex-wrap gap-2">
+      <legend class="sr-only">검사 방식</legend>
+      <button
+        v-for="option in ['text', 'image'] as const"
+        :key="option"
+        type="button"
+        :aria-pressed="mode === option"
+        :class="
+          mode === option ? 'bg-primary text-white' : 'border border-black/15 bg-white text-ink-900'
+        "
+        class="rounded-full px-5 py-2.5 text-sm"
+        :disabled="submitting"
+        @click="mode = option"
+      >
+        {{ option === 'text' ? '문구 입력' : '이미지 업로드' }}
+      </button>
+    </fieldset>
 
     <!-- 왼쪽: 제품 선택 / 오른쪽: 광고 문구 + 검사 버튼 -->
-    <div class="grid grid-cols-2 items-start gap-5">
+    <div class="grid items-start gap-5 md:grid-cols-2">
       <section aria-labelledby="product-section-title" class="card space-y-5 p-6">
         <h2 id="product-section-title" class="text-xl text-ink-900">제품 선택</h2>
 
@@ -188,7 +215,7 @@ async function submit() {
         />
       </section>
 
-      <div class="flex flex-col gap-5">
+      <div v-show="mode === 'text'" class="flex flex-col gap-5">
         <section aria-labelledby="ad-section-title" class="card flex flex-col gap-5 p-6">
           <h2 id="ad-section-title" class="text-xl text-ink-900">광고 문구</h2>
           <AdTextInput v-model="store.adText" />
@@ -236,9 +263,14 @@ async function submit() {
           </p>
         </div>
       </div>
+      <ImageInspectionInput
+        v-show="mode === 'image'"
+        v-model:submitting="submitting"
+        :product-ready="productStepDone"
+      />
     </div>
     <section
-      v-if="store.batchDrafts.length > 0"
+      v-if="mode === 'text' && store.batchDrafts.length > 0"
       class="card space-y-5 p-6"
       aria-labelledby="batch-title"
     >

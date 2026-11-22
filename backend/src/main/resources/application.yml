@@ -1,4 +1,8 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 102MB
   config:
     # backend/에서 실행하면(bootRun 또는 IDE) 저장소 루트의 .env를 읽는다.
     # 실제 환경변수가 있으면 파일 값보다 우선한다.
@@ -43,6 +47,8 @@ foodsafety:
 judge:
   url: ${JUDGE_URL:http://localhost:8000/judge}
   timeout-ms: ${JUDGE_TIMEOUT_MS:180000}
+  image-url: ${JUDGE_IMAGE_URL:}
+  image-timeout-ms: ${JUDGE_IMAGE_TIMEOUT_MS:300000}
 
 jwt:
   # 최소 32바이트 무작위 값의 Base64. 생성: openssl rand -base64 32

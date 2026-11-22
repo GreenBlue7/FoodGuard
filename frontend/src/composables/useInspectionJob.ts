@@ -5,6 +5,7 @@ import type { InspectionJob, JobStatus } from '@/types/inspection'
 
 const POLL_INTERVAL_MS = 1000
 const TIMEOUT_MS = 180_000
+const IMAGE_TIMEOUT_MS = 360_000
 
 // loading: 첫 응답 전 / ready: job 있음 / not-found: 없는 작업 / error: 그 밖의 조회 실패
 type JobLoadState = 'loading' | 'ready' | 'not-found' | 'error'
@@ -31,10 +32,13 @@ export function useInspectionJob(jobId: MaybeRefOrGetter<string>) {
     let pollTimer: ReturnType<typeof setTimeout> | undefined
 
     // 응답이 아예 안 오는 경우도 잡으려고 폴링과 별도의 타이머로 잰다
-    const timeoutTimer = setTimeout(() => {
+    const onTimeout = () => {
       timedOut.value = true
       stop()
-    }, TIMEOUT_MS)
+    }
+    const startedAt = Date.now()
+    let imageTimeout = job.value?.inspectionKind === 'IMAGE'
+    let timeoutTimer = setTimeout(onTimeout, imageTimeout ? IMAGE_TIMEOUT_MS : TIMEOUT_MS)
 
     const stop = () => {
       stopped = true
@@ -49,6 +53,11 @@ export function useInspectionJob(jobId: MaybeRefOrGetter<string>) {
         if (stopped) return // 이미 멈춘 폴링의 늦은 응답은 버림
         job.value = next
         loadState.value = 'ready'
+        if (next.inspectionKind === 'IMAGE' && !imageTimeout) {
+          imageTimeout = true
+          clearTimeout(timeoutTimer)
+          timeoutTimer = setTimeout(onTimeout, IMAGE_TIMEOUT_MS - (Date.now() - startedAt))
+        }
         if (isInProgress(next.status)) pollTimer = setTimeout(poll, POLL_INTERVAL_MS)
         else stop()
       } catch (error) {

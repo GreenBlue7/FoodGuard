@@ -53,7 +53,7 @@ No real API keys, users, product rows, inspection records or mail are included.
 
 ## Migration behavior and upgrades
 
-`migrate.sh` applies backend `001` through `014` and the judge-owned cases schema,
+`migrate.sh` applies the numbered backend migrations (currently `001` through `015`) and the judge-owned cases schema,
 in order. A PostgreSQL advisory lock serializes migration processes. Each SQL file
 and its SHA-256 history row commit atomically. A second run skips unchanged files;
 editing an already applied file stops startup. Add a new numbered migration for
